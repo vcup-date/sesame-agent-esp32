@@ -6,7 +6,7 @@ Ask it in plain language to take a photo, probe an I2C bus, move a servo, record
 
 ![the board](docs/board.png)
 
-## What it actually is
+## How it works
 
 The device runs a small shell with 58 commands. Those same commands are reachable four ways: over USB serial, over SSH, over HTTP, and by the model as its single tool. Adding a command adds it everywhere at once, and the model's system prompt is generated from the live command table, so it always knows exactly what this build can do.
 
@@ -112,11 +112,11 @@ All 58 are available from the serial console, SSH, the web terminal, and to the 
 
 **Remote**  `ssh` (a real SSH server with a persistent host key)
 
-## Hardware support worth calling out
+## Hardware notes
 
 **A real analog output without a DAC.** The ESP32-S3 has no DAC peripheral. The `dac` command uses the sigma-delta modulator instead, which produces a pulse density that becomes a genuine analog voltage or a sine wave once you put a resistor and capacitor on the pin. It can play a short tune with `dac play 2 523:150,659:150,784:300`.
 
-**Servos done properly.** `pwm` runs LEDC at 8 bit, which at the 50 Hz a servo needs gives about a dozen distinct positions across 180 degrees. `servo` uses MCPWM with a 1 MHz tick, so the pulse width is set directly in microseconds, the unit servos are actually specified in.
+**Servos done properly.** `pwm` runs LEDC at 8 bit, which at the 50 Hz a servo needs gives about a dozen distinct positions across 180 degrees. `servo` uses MCPWM with a 1 MHz tick, so the pulse width is set directly in microseconds, the unit servos are specified in.
 
 **Steppers, both common kinds.** `stepper step` drives an A4988 or DRV8825 style step and direction driver. `stepper 4wire` drives a 28BYJ-48 through a ULN2003.
 
@@ -162,7 +162,7 @@ The MicroPython embed package under `components/micropython/micropython_embed` i
 
 `tools/smoke.py` runs a post-flash check over serial and HTTP, covering boot integrity, the filesystem, Python, GPIO, and the web endpoints.
 
-## Honest limits
+## Limits
 
 The shell is not bash. There are no pipes, no redirection, no globbing, and no `&&`. One command per call. `grep <pattern> <file>` rather than `cat file | grep pattern`.
 
@@ -172,7 +172,7 @@ MicroPython here is pure computation. There is no `machine` module, no file acce
 
 The camera, Wi-Fi, SSH, web interface, ESP-NOW, BLE, sigma-delta output, and infrared transmit have all been verified on real hardware. The servo, stepper, I2S audio, SPI and OLED paths compile and validate their arguments but have not been tested against the physical devices, because none were connected during development. Treat first contact with those as debugging rather than as a regression.
 
-## Hardware
+## Tested on
 
 Developed on a GOOUUU ESP32-S3-CAM (16 MB flash, 8 MB octal PSRAM, OV2640). Other ESP32-S3 camera boards should work if you set the camera pinout with `cfg set cam.pins pwdn,reset,xclk,siod,sioc,d7,d6,d5,d4,d3,d2,d1,d0,vsync,href,pclk`.
 
