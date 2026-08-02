@@ -16,21 +16,21 @@ The model is whatever you configure. It speaks the OpenAI chat completions forma
 
 ## Flashing it
 
-The release ships a single merged image, so you do not need the toolchain to try it.
-
-Install esptool if you do not already have it:
+A prebuilt image is committed at [`firmware/sesame-agent-esp32.bin`](firmware/sesame-agent-esp32.bin), so cloning the repo gives you everything at once. It is a single merged file containing the bootloader, partition table and application at their correct offsets, and you do not need the toolchain to flash it.
 
 ```
 pip install esptool
+git clone https://github.com/vcup-date/sesame-agent-esp32.git
+cd sesame-agent-esp32
 ```
 
-Download `sesame-agent-esp32.bin` from the [latest release](../../releases/latest), then hold the BOOT button, tap RESET, release BOOT, and run:
+Hold the BOOT button, tap RESET, release BOOT, then:
 
 ```
-esptool.py --chip esp32s3 --baud 460800 write_flash 0x0 sesame-agent-esp32.bin
+esptool.py --chip esp32s3 --baud 460800 write_flash 0x0 firmware/sesame-agent-esp32.bin
 ```
 
-That is the whole install. The image contains the bootloader, partition table and application at their correct offsets.
+That is the whole install. The same file is attached to the [latest release](../../releases/latest) if you would rather not clone.
 
 If the board is not detected, check that your cable carries data rather than power only. This is the single most common cause. On macOS the port is usually `/dev/cu.usbserial-*`, on Linux `/dev/ttyUSB0`, on Windows a COM port. Pass it with `-p` if esptool guesses wrong.
 
