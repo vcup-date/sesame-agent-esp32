@@ -1,0 +1,940 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>sesame</title>
+<style>
+:root{
+  --bg:#fff; --surface:#f6f6f7; --surface-2:#eeeef0; --border:#e5e5e8;
+  --text:#18181b; --muted:#71717a; --faint:#a1a1aa;
+  --accent:#166b57; --danger:#b4342a; --scrim:rgba(0,0,0,.34);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+  --zh:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+}
+:root[data-theme=dark]{
+  --bg:#131316; --surface:#1c1c20; --surface-2:#26262c; --border:#2c2c33;
+  --text:#ececf0; --muted:#9b9ba4; --faint:#6b6b74;
+  --accent:#4bb695; --danger:#e0685c; --scrim:rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:15.5px/1.62 var(--sans);-webkit-font-smoothing:antialiased;
+  -webkit-text-size-adjust:100%;
+  font-variant-numeric:tabular-nums;
+  display:flex;overflow:hidden;
+
+  height:100dvh;
+  overscroll-behavior:none;
+}
+html[lang=zh] body{font-family:var(--zh)}
+button,input,textarea,select{font:inherit;color:inherit}
+
+#hist{width:0;flex:none;overflow:hidden;background:var(--surface);
+      border-right:1px solid transparent;transition:width .2s ease;
+      display:flex;flex-direction:column;height:100dvh;
+      padding-top:env(safe-area-inset-top)}
+body.hist #hist{width:236px;border-right-color:var(--border)}
+.hist-head{display:flex;align-items:center;justify-content:space-between;
+           padding:13px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
+.hist-head span{font-size:12px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+.hist-list{flex:1;overflow-y:auto;padding:8px}
+.hist-item{display:block;width:100%;text-align:left;border:0;background:none;color:var(--text);
+           font:inherit;font-size:13.5px;padding:9px 10px;border-radius:8px;cursor:pointer;
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background .12s}
+.hist-item:hover{background:var(--surface-2)}
+.hist-item.on{background:var(--surface-2);font-weight:500}
+.hist-item small{display:block;color:var(--faint);font-size:11px;font-weight:400;margin-top:2px}
+.hist-empty{padding:14px 12px;font-size:12.5px;color:var(--faint)}
+
+#main{flex:1;display:flex;flex-direction:column;min-width:0;height:100dvh;
+      transition:margin-right .22s ease}
+header{display:flex;align-items:center;gap:9px;
+       padding:calc(13px + env(safe-area-inset-top)) 22px 13px;
+       border-bottom:1px solid var(--border);flex:none}
+.name{font-weight:600;letter-spacing:-.012em;font-size:16px;white-space:nowrap}
+.chip{font:11.5px var(--mono);color:var(--muted);background:var(--surface);
+      border:1px solid var(--border);padding:2px 7px;border-radius:5px}
+.sp{flex:1}
+.ib{border:1px solid var(--border);background:none;color:var(--muted);
+    height:30px;min-width:30px;padding:0 9px;border-radius:8px;cursor:pointer;
+    font-size:12.5px;display:inline-flex;align-items:center;gap:5px;
+    white-space:nowrap;flex:none}
+.ib:hover{color:var(--text);background:var(--surface)}
+.ib.on{color:var(--accent);border-color:var(--accent)}
+
+.ib.sel{appearance:none;padding-right:22px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 12px) 50%,calc(100% - 8px) 50%;
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+.ib.sel:focus{outline:none;border-color:var(--muted)}
+
+#scroll{flex:1;overflow-y:auto}
+#thread{max-width:760px;margin:0 auto;padding:26px 22px 12px}
+
+#thread.is-empty{display:flex;align-items:center;justify-content:center;
+                 min-height:calc(100vh - 200px)}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center}
+.empty .mark{font-size:25px;font-weight:600;letter-spacing:-.022em;margin-bottom:7px}
+.empty .tag{color:var(--muted);font-size:14.5px;max-width:400px;margin-bottom:24px}
+
+.sugs{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:min(460px,100%)}
+.sug{border:1px solid var(--border);background:var(--surface);color:var(--text);
+     font-size:13.5px;padding:9px 13px;border-radius:9px;cursor:pointer;text-align:center;
+     transition:border-color .15s,color .15s,transform .12s;
+     animation:rise .3s cubic-bezier(.22,.61,.36,1) both}
+
+.sug:nth-child(1){animation-delay:.02s}
+.sug:nth-child(2){animation-delay:.06s}
+.sug:nth-child(3){animation-delay:.10s}
+.sug:nth-child(4){animation-delay:.14s}
+.sug:hover{border-color:var(--accent);color:var(--accent)}
+.sug:active{transform:scale(.98)}
+.empty .mark,.empty .tag{animation:fade .35s ease both}
+
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pulse-edge{0%,100%{border-left-color:var(--border)}
+                      50%{border-left-color:var(--accent)}}
+@keyframes flash{from{color:var(--accent)}to{color:inherit}}
+
+.msg{margin-bottom:26px;animation:rise .22s cubic-bezier(.22,.61,.36,1) both}
+.msg.user{display:flex;justify-content:flex-end}
+.msg.user .bubble{background:var(--surface);border:1px solid var(--border);
+  padding:9px 14px;border-radius:16px 16px 4px 16px;max-width:76%;white-space:pre-wrap}
+.msg.bot .body>p{margin:0 0 11px}
+.msg.bot .body>p:last-child{margin-bottom:0}
+.msg.bot code{font:12.8px var(--mono);background:var(--surface);
+  border:1px solid var(--border);padding:1px 5px;border-radius:5px}
+
+.tool{margin:0 0 15px;border-left:2px solid var(--border);padding-left:13px;
+      animation:rise .2s ease both}
+
+.tool.running{animation:rise .2s ease both, pulse-edge 1.4s ease-in-out infinite .2s}
+.tool-cmd{font:12.8px var(--mono);display:flex;align-items:center;gap:7px;cursor:pointer}
+.tool-cmd .caret{color:var(--faint);transition:transform .12s;font-size:10px}
+.tool.open .caret{transform:rotate(90deg)}
+
+.tool.open .tool-out{max-height:210px;overflow:auto}
+.spin{width:9px;height:9px;border:1.5px solid var(--faint);border-top-color:transparent;
+      border-radius:50%;animation:sp .7s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+.tool-out{display:none;margin:5px 0 0;white-space:pre-wrap;overflow-x:auto;
+          font:12.5px/1.6 var(--mono);color:var(--muted)}
+.tool.open .tool-out{display:block}
+.tool-out.err{color:var(--danger)}
+
+.file{display:flex;align-items:center;gap:11px;margin:11px 0;border:1px solid var(--border);
+      border-radius:11px;padding:10px 12px;background:var(--surface);max-width:420px}
+.file .ic{width:32px;height:32px;border-radius:7px;background:var(--surface-2);
+          display:grid;place-items:center;font:10px var(--mono);color:var(--muted);flex:none}
+.file .meta{flex:1;min-width:0}
+.file .fn{font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file .fs{font:11.5px var(--mono);color:var(--faint)}
+.file a.dl{border:1px solid var(--border);background:var(--bg);text-decoration:none;
+           color:var(--text);font-size:12.5px;padding:5px 10px;border-radius:7px;flex:none}
+.file a.dl:hover{border-color:var(--accent);color:var(--accent)}
+
+.shot{margin:15px 0;max-width:400px}
+
+.shot img{display:block;width:100%;border-radius:11px;border:1px solid var(--border);
+          cursor:zoom-in;opacity:0;transition:opacity .3s ease}
+.shot img.ready{opacity:1}
+.shot img:active{transform:scale(.995)}
+.shot .cap{margin-top:7px;display:flex;justify-content:space-between;align-items:baseline;
+           gap:10px;font:11.5px var(--mono);color:var(--faint)}
+.shot .cap a{color:var(--muted);text-decoration:none;border-bottom:1px solid var(--border)}
+.shot .cap a:hover{color:var(--accent);border-color:var(--accent)}
+
+.thinking{display:flex;gap:5px;padding:2px 0}
+.thinking i{width:6px;height:6px;border-radius:50%;background:var(--faint);animation:bob 1.2s infinite}
+.thinking i:nth-child(2){animation-delay:.15s}
+.thinking i:nth-child(3){animation-delay:.3s}
+@keyframes bob{0%,60%,100%{opacity:.28}30%{opacity:1}}
+.err{color:var(--danger);font-size:14px}
+
+#composer{padding:12px 22px calc(14px + env(safe-area-inset-bottom));
+          border-top:1px solid var(--border)}
+.cbox{max-width:760px;margin:0 auto;display:flex;align-items:flex-end;gap:9px;
+      border:1px solid var(--border);border-radius:15px;padding:8px 8px 8px 15px}
+.cbox:focus-within{border-color:var(--muted)}
+.cbox textarea{flex:1;border:0;outline:0;resize:none;background:none;
+               max-height:170px;padding:6px 0;line-height:1.55}
+.cbox textarea::placeholder{color:var(--faint)}
+#send{width:32px;height:32px;flex:none;border:0;border-radius:9px;cursor:pointer;
+      background:var(--accent);color:#fff;font-size:15px;line-height:1;
+      transition:background .15s,transform .1s,opacity .15s}
+#send:active:not(:disabled){transform:scale(.92)}
+#send:disabled{background:var(--surface-2);color:var(--faint);cursor:default}
+.kv dd{transition:color .2s}
+.kv dd.changed{animation:flash .9s ease both}
+.bar i{transition:width .4s cubic-bezier(.22,.61,.36,1)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+                       transition-duration:.001ms !important}
+}
+.hint{max-width:760px;margin:7px auto 0;font-size:11.5px;color:var(--faint)}
+
+#scrim{position:fixed;inset:0;background:var(--scrim);opacity:0;pointer-events:none;
+       transition:opacity .2s;z-index:20}
+body.open #scrim{opacity:1;pointer-events:auto}
+#drawer{
+  position:fixed;top:0;right:0;bottom:0;width:308px;z-index:30;
+  background:var(--surface);border-left:1px solid var(--border);
+  transform:translateX(100%);transition:transform .22s ease;
+  display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+body.open #drawer{transform:none}
+.dhead{display:flex;gap:4px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.tab{flex:1;border:0;background:none;color:var(--muted);font-size:13px;
+     padding:6px 0;border-radius:7px;cursor:pointer}
+.tab.on{background:var(--bg);color:var(--text)}
+.dbody{flex:1;overflow-y:auto;padding:16px 16px 26px}
+.pane{display:none}.pane.on{display:block}
+
+.sect{font-size:10.5px;font-weight:600;letter-spacing:.085em;text-transform:uppercase;
+      color:var(--faint);margin:20px 0 8px}
+.sect:first-child{margin-top:0}
+
+html[lang=zh] .sect{letter-spacing:0;font-size:11.5px;font-weight:500;color:var(--muted)}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font:12.5px var(--mono)}
+.kv dd.up{color:var(--accent)}.kv dd.down{color:var(--danger)}
+
+.bar{height:5px;background:var(--surface-2);border:1px solid var(--border);
+     border-radius:3px;overflow:hidden;margin:6px 0 3px}
+
+.bar i{display:block;height:100%;background:var(--accent);opacity:.8}
+.plist a{display:flex;justify-content:space-between;gap:8px;padding:6px 0;
+         font-size:12.5px;color:var(--text);text-decoration:none;border-bottom:1px solid var(--border)}
+.plist a:hover{color:var(--accent)}
+.plist span.sz{font:11.5px var(--mono);color:var(--faint)}
+
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.fld input{width:100%;border:1px solid var(--border);background:var(--bg);
+           border-radius:8px;padding:8px 10px;font:13px var(--mono)}
+.fld input:focus{outline:0;border-color:var(--accent)}
+.fld .note{margin-top:5px;font-size:11.5px;color:var(--faint)}
+.save{width:100%;border:0;background:var(--accent);color:#fff;padding:9px;
+      border-radius:8px;cursor:pointer;font-size:13.5px}
+.saved{font-size:12.5px;color:var(--accent);margin-top:8px;min-height:16px}
+
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;place-items:center;z-index:60;padding:24px}
+#lb.on{display:grid}
+#lb img{max-width:92vw;max-height:82vh;border-radius:9px}
+#lb .lbbar{position:absolute;bottom:22px;display:flex;gap:10px}
+#lb a{background:#fff;color:#111;text-decoration:none;font-size:13.5px;padding:8px 15px;border-radius:8px}
+
+@media(min-width:1000px){
+  body.open #main{margin-right:308px}
+  body.open #scrim{opacity:0;pointer-events:none}
+}
+
+@media(max-width:900px){
+  #hist{position:fixed;top:0;bottom:0;left:0;z-index:30;width:min(300px,84vw);
+        transform:translateX(-100%);transition:transform .22s ease;
+        border-right:1px solid var(--border)}
+  body.hist #hist{transform:none;width:min(300px,84vw)}
+  body.hist #scrim{opacity:1;pointer-events:auto}
+  #main{margin-right:0 !important}
+  #drawer{width:min(320px,88vw)}
+  header,#thread,#composer{padding-left:14px;padding-right:14px}
+
+  #model{display:none}
+  .msg.user .bubble{max-width:88%}
+  .shot,.file{max-width:100%}
+}
+
+@media(max-width:600px){
+
+  #newchat{display:none}
+  .ib.sel{font-size:12px;padding:0 18px 0 7px;background-position:calc(100% - 9px) 50%,calc(100% - 6px) 50%}
+  header{gap:7px;padding-left:12px;padding-right:12px}
+  .sugs{grid-template-columns:1fr}
+  .empty .mark{font-size:22px}
+  .empty .tag{font-size:14px}
+  #thread{padding-top:18px}
+}
+
+@media(pointer:coarse){
+  .ib{height:38px;min-width:38px;font-size:14px}
+  .tab{padding:11px 0}
+  .hist-item{padding:12px 10px}
+  #send{width:40px;height:40px;font-size:17px}
+  .cbox textarea,.fld input,select,#q{font-size:16px !important}
+  .plist a,.file a.dl{padding-top:10px;padding-bottom:10px}
+}
+</style>
+
+<aside id="hist">
+  <div class="hist-head"><span data-i18n="histTitle">History</span>
+    <button class="ib" id="newchat2" title="new">＋</button></div>
+  <div class="hist-list" id="histList"></div>
+</aside>
+
+<div id="main">
+  <header>
+    <button class="ib" id="histBtn" title="history">☰</button>
+    <span class="name" id="brand">sesame agent</span>
+    <span class="chip" id="model">—</span>
+    <span class="sp"></span>
+    <select class="ib sel" id="lang" title="language">
+      <option value="en">English</option>
+      <option value="zh">中文</option>
+    </select>
+    <button class="ib" id="theme" title="theme">◐</button>
+    <button class="ib" id="newchat" data-i18n="newChat">New chat</button>
+    <button class="ib" id="drawerBtn" title="device">⚙</button>
+  </header>
+  <div id="scroll"><div id="thread"></div></div>
+  <div id="composer">
+    <div class="cbox">
+      <textarea id="q" rows="1" data-i18n-ph="placeholder" placeholder="Ask sesame to do something…"></textarea>
+      <button id="send">↑</button>
+    </div>
+    <div class="hint" data-i18n="hint">Enter to send · Shift+Enter for a new line</div>
+  </div>
+</div>
+
+<div id="scrim"></div>
+<aside id="drawer">
+  <div class="dhead">
+    <button class="tab on" data-pane="status" data-i18n="tabStatus">Status</button>
+    <button class="tab" data-pane="files" data-i18n="tabFiles">Files</button>
+    <button class="tab" data-pane="settings" data-i18n="tabSettings">Settings</button>
+  </div>
+  <div class="dbody">
+
+    <div class="pane on" id="p-status">
+      <div class="sect" data-i18n="secConn">Connection</div>
+      <div class="kv"><dt data-i18n="lblStatus">Status</dt><dd id="s-link" class="up">—</dd></div>
+      <div class="kv"><dt data-i18n="lblSsid">Network</dt><dd id="s-ssid">—</dd></div>
+      <div class="kv"><dt data-i18n="lblIp">Address</dt><dd id="s-ip">—</dd></div>
+      <div class="kv"><dt data-i18n="lblRssi">Signal</dt><dd id="s-rssi">—</dd></div>
+      <div class="kv"><dt data-i18n="lblUptime">Uptime</dt><dd id="s-up">—</dd></div>
+
+      <div class="sect" data-i18n="secMem">Memory</div>
+      <div class="kv"><dt>PSRAM</dt><dd id="s-psram">—</dd></div>
+      <div class="bar"><i id="b-psram" style="width:0"></i></div>
+      <div class="kv"><dt data-i18n="lblSram">Internal</dt><dd id="s-sram">—</dd></div>
+
+      <div class="sect" data-i18n="secStore">Storage</div>
+      <div class="kv"><dt data-i18n="lblFree">Free</dt><dd id="s-fs">—</dd></div>
+      <div class="bar"><i id="b-fs" style="width:0"></i></div>
+
+      <div class="sect" data-i18n="secHw">Hardware</div>
+      <div class="kv"><dt data-i18n="lblCam">Camera</dt><dd id="s-cam">—</dd></div>
+      <div class="kv"><dt data-i18n="lblCmds">Commands</dt><dd id="s-cmds">—</dd></div>
+      <div class="kv"><dt data-i18n="lblCtx">Context</dt><dd id="s-ctx">—</dd></div>
+    </div>
+
+    <div class="pane" id="p-files">
+      <div class="kv"><dt data-i18n="lblFree">Free</dt><dd id="f-space">—</dd></div>
+      <div class="bar"><i id="f-bar" style="width:0"></i></div>
+      <div class="plist" id="files" style="margin-top:12px"></div>
+    </div>
+
+    <div class="pane" id="p-settings">
+      <div class="sect" data-i18n="secProfile">Profile</div>
+      <div class="fld">
+        <select id="f-profile" style="width:100%;border:1px solid var(--border);
+                background:var(--bg);border-radius:8px;padding:8px 10px;font:13px var(--mono)"></select>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="ib" id="p-save"  style="flex:1" data-i18n="btnProfSave">Save as…</button>
+          <button class="ib" id="p-del"   style="flex:1" data-i18n="btnProfDel">Delete</button>
+        </div>
+        <div class="note" data-i18n="noteProfile">Named sets of provider, key and model. Selecting one applies it.</div>
+      </div>
+
+      <div class="sect" data-i18n="secModel">Model</div>
+      <div class="fld"><label data-i18n="lblPreset">Provider</label>
+        <select id="f-preset" style="width:100%;border:1px solid var(--border);
+                background:var(--bg);border-radius:8px;padding:8px 10px;font:13px var(--mono)">
+        </select>
+        <div class="note" data-i18n="notePreset">Fills the endpoint below. All speak the OpenAI API.</div></div>
+      <div class="fld"><label data-i18n="lblKey">API key</label>
+        <input id="f-key" type="password" placeholder="sk-…">
+        <div class="note" data-i18n="noteKey">Stored on the device. Blank leaves it unchanged.</div></div>
+      <div class="fld"><label data-i18n="lblUrl">Endpoint</label><input id="f-url"></div>
+      <div class="fld"><label data-i18n="lblModel">Model</label><input id="f-model"></div>
+
+      <div class="sect" data-i18n="secWifi">Wi-Fi</div>
+      <div class="fld">
+        <select id="w-list" style="width:100%;border:1px solid var(--border);
+                background:var(--bg);border-radius:8px;padding:8px 10px;font:13px var(--mono)">
+          <option value="" data-i18n="wScanning">scanning…</option>
+        </select>
+        <input id="w-pass" type="password" placeholder="password" style="margin-top:8px">
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="ib" id="w-scan" style="flex:1" data-i18n="btnRescan">Rescan</button>
+          <button class="ib" id="w-join" style="flex:1" data-i18n="btnJoin">Join</button>
+        </div>
+        <div class="note" id="w-note"></div>
+      </div>
+
+      <div class="sect" data-i18n="secDevice">Device</div>
+      <div class="fld"><label data-i18n="lblName">Name</label>
+        <input id="f-name"><div class="note" id="mdnsNote"></div></div>
+      <div class="fld"><label data-i18n="lblSsh">SSH password</label><input id="f-ssh" type="password"></div>
+
+      <button class="save" id="save" data-i18n="btnSave">Save</button>
+      <div class="saved" id="savedMsg"></div>
+    </div>
+
+  </div>
+</aside>
+
+<div id="lb"><img id="lbimg" alt=""><div class="lbbar"><a id="lbdl" download data-i18n="btnDownload">Download</a><a href="#" id="lbx" data-i18n="btnClose">Close</a></div></div>
+
+<script>
+const $ = s => document.querySelector(s), $$ = s => document.querySelectorAll(s);
+
+const I18N = {
+  en:{ brand:'sesame agent', newChat:'New chat',
+    tag:'It runs on the board in front of you. Ask it to look at something, measure something, or change something.',
+    sug1:'Take a photo', sug2:'What is on the I2C bus?',
+    sug3:'How much memory is free?', sug4:'List the files you have',
+    placeholder:'Ask it to do something on the board…', hint:'Enter to send · Shift+Enter for a new line',
+    tabStatus:'Status', tabFiles:'Files', tabSettings:'Settings',
+    secConn:'Connection', lblStatus:'Status', lblSsid:'Network', lblIp:'Address',
+    lblRssi:'Signal', lblUptime:'Uptime', secMem:'Memory', lblSram:'Internal',
+    secStore:'Storage', lblFree:'Free', secHw:'Hardware', lblCam:'Camera',
+    lblCmds:'Commands', lblCtx:'Context', secModel:'Model', lblKey:'API key',
+    noteKey:'Stored on the device. Blank leaves it unchanged.', lblUrl:'Endpoint',
+    lblModel:'Model', secDevice:'Device', lblName:'Name', lblSsh:'SSH password',
+    btnSave:'Save', btnDownload:'Download', btnClose:'Close', saved:'Saved',
+    histTitle:'History', noChats:'No conversations yet', stop:'Stop',
+    stopped:'Stopped.', lblPreset:'Provider',
+    notePreset:'Fills the endpoint below. All speak the OpenAI API.',
+    secProfile:'Profile', profNone:'— none —', btnProfSave:'Save as…',
+    btnProfDel:'Delete', profName:'Name this profile', profDel:'Delete profile',
+    noteProfile:'Named sets of provider, key and model, stored on the device. Selecting one applies it.',
+    secWifi:'Wi-Fi', wScanning:'scanning…', wNone:'no networks found',
+    btnRescan:'Rescan', btnJoin:'Join', wJoining:'Joining',
+    wMoved:'Joining now — it leaves this network, so reconnect at its new address.',
+    delFile:'Delete',
+    online:'online', offline:'offline', portal:'setup', ready:'ready', off:'off',
+    noFiles:'Nothing yet', lost:'Lost the connection to the device: ' },
+  zh:{ brand:'芝麻虾', newChat:'新对话',
+    tag:'它就运行在你面前这块板子上。让它看一看、量一量，或者改点什么。',
+    sug1:'拍一张照片', sug2:'I2C 总线上有什么？',
+    sug3:'还有多少内存可用？', sug4:'列出你保存的文件',
+    placeholder:'让它在板子上做点什么…', hint:'回车发送 · Shift+回车换行',
+    tabStatus:'状态', tabFiles:'文件', tabSettings:'设置',
+    secConn:'网络', lblStatus:'状态', lblSsid:'网络', lblIp:'地址',
+    lblRssi:'信号', lblUptime:'运行时间', secMem:'内存', lblSram:'片内内存',
+    secStore:'存储', lblFree:'可用', secHw:'硬件', lblCam:'摄像头',
+    lblCmds:'命令数', lblCtx:'上下文', secModel:'模型', lblKey:'API 密钥',
+    noteKey:'仅保存在设备上。留空则不修改。', lblUrl:'接口地址',
+    lblModel:'模型', secDevice:'设备', lblName:'名称', lblSsh:'SSH 密码',
+    btnSave:'保存', btnDownload:'下载', btnClose:'关闭', saved:'已保存',
+    histTitle:'历史', noChats:'还没有对话', stop:'停止',
+    stopped:'已停止。', lblPreset:'服务商',
+    notePreset:'自动填写下方接口地址。均使用 OpenAI 接口格式。',
+    secProfile:'配置档', profNone:'— 无 —', btnProfSave:'另存为…',
+    btnProfDel:'删除', profName:'为此配置档命名', profDel:'删除配置档',
+    noteProfile:'保存在设备上的服务商、密钥与模型组合。选择即生效。',
+    secWifi:'Wi-Fi', wScanning:'扫描中…', wNone:'未发现网络',
+    btnRescan:'重新扫描', btnJoin:'连接', wJoining:'正在连接',
+    wMoved:'正在连接 — 设备会离开当前网络，请到新地址重新访问。',
+    delFile:'删除',
+    online:'在线', offline:'离线', portal:'配网中', ready:'就绪', off:'关闭',
+    noFiles:'还没有文件', lost:'与设备的连接中断：' }
+};
+let lang = localStorage.lang || (navigator.language.startsWith('zh') ? 'zh' : 'en');
+const t = k => I18N[lang][k] || k;
+
+function applyLang(){
+  document.documentElement.lang = lang;
+  $('#brand').textContent = t('brand');
+  $('#lang').value = lang;
+  $$('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  $$('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+  document.title = t('brand');
+  if (!thread.querySelector('.msg') && !restoreLast()) renderEmpty();
+  refresh();
+}
+$('#lang').onchange = e => { lang = e.target.value; localStorage.lang = lang; applyLang(); };
+
+let theme = localStorage.theme || 'auto';
+function applyTheme(){
+  const dark = theme === 'dark' || (theme === 'auto' &&
+    matchMedia('(prefers-color-scheme:dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('#theme').textContent = theme === 'auto' ? '◐' : theme === 'dark' ? '☾' : '☀';
+  $('#theme').title = theme;
+}
+$('#theme').onclick = () => {
+  theme = theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light';
+  localStorage.theme = theme; applyTheme();
+};
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change', applyTheme);
+
+const isPhone = () => matchMedia('(max-width:900px)').matches;
+
+const drawer = () => document.body.classList.toggle('open');
+$('#drawerBtn').onclick = drawer;
+
+$('#scrim').onclick = () => document.body.classList.remove('open', 'hist');
+
+$('#histBtn').onclick = () => {
+  document.body.classList.toggle('hist');
+  localStorage.hist = document.body.classList.contains('hist') ? '1' : '0';
+};
+
+if (!isPhone() && (localStorage.hist ?? '1') === '1') {
+  document.body.classList.add('hist');
+}
+$$('.tab').forEach(b => b.onclick = () => {
+  $$('.tab').forEach(x => x.classList.toggle('on', x === b));
+  $$('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.pane));
+});
+
+const thread = $('#thread'), scroll = $('#scroll'), q = $('#q');
+let busy = false, ctrl = null;
+
+const CTRL = location.protocol + '//' + location.hostname + ':81';
+
+const PRESETS = [
+  ['DeepSeek',    'https://api.deepseek.com',        'deepseek-v4-flash'],
+  ['OpenRouter',  'https://openrouter.ai/api/v1',    'deepseek/deepseek-chat'],
+  ['OpenAI',      'https://api.openai.com/v1',       'gpt-4o-mini'],
+  ['Groq',        'https://api.groq.com/openai/v1',  'llama-3.3-70b-versatile'],
+  ['Together',    'https://api.together.xyz/v1',     'meta-llama/Llama-3.3-70B-Instruct-Turbo'],
+  ['xAI',         'https://api.x.ai/v1',             'grok-2-latest'],
+  ['Mistral',     'https://api.mistral.ai/v1',       'mistral-small-latest'],
+  ['Ollama (LAN)','http://192.168.1.10:11434/v1',    'qwen2.5:7b'],
+  ['Custom',      '',                                ''],
+];
+
+const HKEY = 'sesame.history';
+let hist = [];
+let current = null;
+
+function histLoad(){ try { hist = JSON.parse(localStorage[HKEY] || '[]'); } catch { hist = []; } }
+function histSave(){ try { localStorage[HKEY] = JSON.stringify(hist.slice(0, 40)); } catch {} }
+
+function histRender(){
+  const el = $('#histList');
+  if (!hist.length){ el.innerHTML = '<div class="hist-empty">'+t('noChats')+'</div>'; return; }
+  el.innerHTML = '';
+  hist.forEach((h, i) => {
+    const b = document.createElement('button');
+    b.className = 'hist-item' + (h === current ? ' on' : '');
+    b.innerHTML = '<span></span><small></small>';
+    b.querySelector('span').textContent = h.title;
+    b.querySelector('small').textContent = new Date(h.at).toLocaleString();
+    b.onclick = () => {
+      openChat(i);
+
+      if (isPhone()) document.body.classList.remove('hist');
+    };
+    el.appendChild(b);
+  });
+}
+
+function openChat(i){
+  const h = hist[i];
+  if (!h) return;
+  current = h;
+  localStorage.lastChat = h.at;
+  thread.classList.remove('is-empty');
+  thread.innerHTML = h.html;
+
+  thread.querySelectorAll('.tool-cmd').forEach(c => c.onclick = () => c.parentElement.classList.toggle('open'));
+  thread.querySelectorAll('.shot img').forEach(im => { im.classList.add('ready');
+    im.onclick = () => openLb(im.src, im.alt || 'photo'); });
+  histRender();
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function histRecord(title){
+  if (!current){
+    current = { title: title.slice(0, 60), at: Date.now(), html: '' };
+    hist.unshift(current);
+  }
+  current.html = thread.innerHTML;
+  current.at = Date.now();
+  localStorage.lastChat = current.at;
+  histSave(); histRender();
+}
+
+function restoreLast(){
+  const at = Number(localStorage.lastChat || 0);
+  const i = hist.findIndex(h => h.at === at);
+  if (i >= 0) { openChat(i); return true; }
+  return false;
+}
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const kb  = b => b >= 1048576 ? (b/1048576).toFixed(1)+' MB' : (b/1024).toFixed(1)+' KB';
+
+const pair = (a,b) => (a/1048576).toFixed(1)+' / '+(b/1048576).toFixed(1)+' MB';
+const md  = x => esc(x).replace(/`([^`]+)`/g,'<code>$1</code>')
+  .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+  .split(/\n{2,}/).map(p => '<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
+const atBottom = () => scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 120;
+
+function renderEmpty(){
+  thread.innerHTML = '';
+  thread.classList.add('is-empty');
+  const d = document.createElement('div');
+  d.className = 'empty';
+  d.innerHTML = '<div class="mark"></div><div class="tag"></div><div class="sugs"></div>';
+  d.querySelector('.mark').textContent = t('brand');
+  d.querySelector('.tag').textContent = t('tag');
+  const box = d.querySelector('.sugs');
+  ['sug1','sug2','sug3','sug4'].forEach(k => {
+    const b = document.createElement('button');
+    b.className = 'sug';
+    b.textContent = t(k);
+    b.onclick = () => { q.value = t(k); send(); };
+    box.appendChild(b);
+  });
+  thread.appendChild(d);
+}
+
+function addUser(text){
+  $('.empty')?.remove();
+  thread.classList.remove('is-empty');
+  const d = document.createElement('div');
+  d.className = 'msg user';
+  d.innerHTML = '<div class="bubble"></div>';
+  d.firstChild.textContent = text;
+  thread.appendChild(d);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+function addBot(){
+  const d = document.createElement('div');
+  d.className = 'msg bot';
+  d.innerHTML = '<div class="body"></div>';
+  thread.appendChild(d);
+  return d.firstChild;
+}
+function thinking(b){
+  const e = document.createElement('div');
+  e.className = 'thinking'; e.innerHTML = '<i></i><i></i><i></i>';
+  b.appendChild(e); scroll.scrollTop = scroll.scrollHeight; return e;
+}
+function toolBlock(b, cmd){
+  const w = document.createElement('div');
+  w.className = 'tool open running';
+  w.innerHTML = '<div class="tool-cmd"><span class="spin"></span><span class="c"></span></div><pre class="tool-out"></pre>';
+  w.querySelector('.c').textContent = cmd;
+  w.querySelector('.tool-cmd').onclick = () => w.classList.toggle('open');
+  b.appendChild(w); return w;
+}
+function openLb(url,name){
+  $('#lbimg').src = url; $('#lbdl').href = url;
+  $('#lbdl').setAttribute('download', name); $('#lb').classList.add('on');
+}
+$('#lb').onclick = e => { if (e.target.id !== 'lbdl') $('#lb').classList.remove('on'); };
+
+function offerFiles(body, text){
+  const re = /(\/sesame\/[\w./-]+?\.(jpg|jpeg|png|txt|json|py|csv|log))\b/gi;
+  const seen = new Set(); let m;
+  while ((m = re.exec(text))) {
+    const path = m[1]; if (seen.has(path)) continue; seen.add(path);
+    const name = path.split('/').pop(), url = '/file?p=' + encodeURIComponent(path);
+    const size = (text.match(new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^\\n]*?(\\d+) bytes'))||[])[1];
+    if (/\.(jpe?g|png)$/i.test(name)) {
+      const f = document.createElement('figure');
+      f.className = 'shot';
+      f.innerHTML = '<img alt=""><div class="cap"><span></span><a></a></div>';
+      const img = f.querySelector('img');
+
+      img.onload = () => { img.classList.add('ready'); if (atBottom()) scroll.scrollTop = scroll.scrollHeight; };
+      img.src = url; img.onclick = () => openLb(url, name);
+      f.querySelector('.cap span').textContent = name + (size ? ' · ' + kb(+size) : '');
+      const a = f.querySelector('.cap a');
+      a.href = url; a.setAttribute('download', name); a.textContent = t('btnDownload');
+      body.appendChild(f);
+    } else {
+      const f = document.createElement('div');
+      f.className = 'file';
+      f.innerHTML = '<div class="ic"></div><div class="meta"><div class="fn"></div><div class="fs"></div></div><a class="dl"></a>';
+      f.querySelector('.ic').textContent = name.split('.').pop().toUpperCase();
+      f.querySelector('.fn').textContent = name;
+      f.querySelector('.fs').textContent = size ? kb(+size) : path;
+      const a = f.querySelector('a');
+      a.href = url; a.setAttribute('download', name); a.textContent = t('btnDownload');
+      body.appendChild(f);
+    }
+  }
+}
+
+async function send(){
+  const text = q.value.trim();
+  if (!text || busy) return;
+  busy = true;
+  ctrl = new AbortController();
+  $('#send').textContent = '■';
+  $('#send').title = t('stop');
+  q.value = ''; q.style.height = 'auto';
+  addUser(text);
+
+  const body = addBot();
+  let dots = thinking(body), cur = null;
+
+  try{
+    const r = await fetch('/api/chat', {method:'POST', signal: ctrl.signal,
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({message:text})});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for(;;){
+      const {value,done} = await rd.read(); if (done) break;
+      buf += dec.decode(value,{stream:true});
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0){
+        const line = buf.slice(0,nl).trim(); buf = buf.slice(nl+1);
+        if (!line) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        const was = atBottom();
+        if (dots){ dots.remove(); dots = null; }
+        if (ev.t === 'text'){
+          const p = document.createElement('div'); p.innerHTML = md(ev.v); body.appendChild(p);
+        } else if (ev.t === 'call'){
+          cur = toolBlock(body, ev.v);
+        } else if (ev.t === 'result'){
+          if (cur){
+            cur.classList.remove('running');
+            cur.querySelector('.spin').outerHTML = '<span class="caret">▶</span>';
+            const out = cur.querySelector('.tool-out');
+            out.textContent = ev.v;
+            if (/error|failed|not /i.test(ev.v)) out.classList.add('err');
+
+            offerFiles(body, ev.v);
+            cur = null;
+          }
+          dots = thinking(body);
+        } else if (ev.t === 'error'){
+          const e = document.createElement('div'); e.className = 'err';
+          e.textContent = ev.v; body.appendChild(e);
+        }
+        if (was) scroll.scrollTop = scroll.scrollHeight;
+      }
+    }
+  } catch(err){
+    const e = document.createElement('div'); e.className='err';
+    e.textContent = err.name === 'AbortError' ? t('stopped') : t('lost') + err.message;
+    body.appendChild(e);
+  }
+  if (dots) dots.remove();
+  busy = false; ctrl = null;
+  $('#send').textContent = '↑'; $('#send').title = '';
+  histRecord(text);
+  if (!isPhone()) q.focus();
+  refresh();
+}
+
+async function stop(){
+  $('#send').disabled = true;
+  try { await fetch(CTRL + '/api/stop', {method:'POST'}); } catch {}
+  if (ctrl) ctrl.abort();
+  $('#send').disabled = false;
+}
+$('#send').onclick = () => busy ? stop() : send();
+q.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+q.addEventListener('input', () => {
+  q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight,170)+'px';
+});
+async function newChat(){
+  await fetch('/api/reset',{method:'POST'});
+  current = null;
+  delete localStorage.lastChat;
+  renderEmpty();
+  histRender();
+  if (isPhone()) document.body.classList.remove('hist');
+
+  if (!isPhone()) q.focus();
+}
+$('#newchat').onclick = newChat;
+$('#newchat2').onclick = newChat;
+
+(function initPresets(){
+  const sel = $('#f-preset');
+  sel.innerHTML = '<option value="">—</option>' +
+    PRESETS.map((p, i) => '<option value="'+i+'">'+p[0]+'</option>').join('');
+  sel.onchange = () => {
+    const p = PRESETS[sel.value];
+
+    if (!p || !p[1]) return;
+    $('#f-url').value = p[1];
+    $('#f-model').value = p[2];
+  };
+})();
+
+let profiles = [];
+
+async function profilesLoad(){
+  try { profiles = await (await fetch('/api/profiles')).json(); } catch { profiles = []; }
+  if (!Array.isArray(profiles)) profiles = [];
+  const sel = $('#f-profile');
+  const active = localStorage.profile || '';
+  sel.innerHTML = '<option value="">' + t('profNone') + '</option>' +
+    profiles.map(p => '<option value="' + esc(p.name) + '"' +
+      (p.name === active ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+}
+
+async function profilesSave(){
+  try {
+    await fetch('/api/profiles', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(profiles)});
+  } catch {}
+}
+
+$('#f-profile').onchange = async e => {
+  const p = profiles.find(x => x.name === e.target.value);
+  if (!p) return;
+  $('#f-url').value = p.url || '';
+  $('#f-model').value = p.model || '';
+  localStorage.profile = p.name;
+
+  await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({url: p.url, model: p.model, key: p.key || ''})});
+  $('#savedMsg').textContent = t('saved');
+  setTimeout(() => $('#savedMsg').textContent = '', 2000);
+  refresh();
+};
+
+$('#p-save').onclick = async () => {
+  const name = prompt(t('profName'), localStorage.profile || '');
+  if (!name) return;
+  const p = { name, url: $('#f-url').value, model: $('#f-model').value };
+
+  if ($('#f-key').value) p.key = $('#f-key').value;
+  const i = profiles.findIndex(x => x.name === name);
+  if (i >= 0) profiles[i] = Object.assign(profiles[i], p); else profiles.push(p);
+  localStorage.profile = name;
+  await profilesSave(); await profilesLoad();
+};
+
+$('#p-del').onclick = async () => {
+  const name = $('#f-profile').value;
+  if (!name || !confirm(t('profDel') + ' ' + name + '?')) return;
+  profiles = profiles.filter(x => x.name !== name);
+  if (localStorage.profile === name) delete localStorage.profile;
+  await profilesSave(); await profilesLoad();
+};
+
+async function wifiScan(){
+  const sel = $('#w-list');
+  sel.innerHTML = '<option value="">' + t('wScanning') + '</option>';
+  try {
+    const nets = await (await fetch('/api/wifi/scan')).json();
+    sel.innerHTML = nets.length
+      ? nets.map(n => '<option value="' + esc(n.ssid) + '">' + esc(n.ssid) +
+          '  ' + n.rssi + 'dBm' + (n.lock ? ' 🔒' : '') + '</option>').join('')
+      : '<option value="">' + t('wNone') + '</option>';
+  } catch { sel.innerHTML = '<option value="">' + t('wNone') + '</option>'; }
+}
+$('#w-scan').onclick = wifiScan;
+$('#w-join').onclick = async () => {
+  const ssid = $('#w-list').value;
+  if (!ssid) return;
+  $('#w-note').textContent = t('wJoining') + ' ' + ssid;
+  try {
+    await fetch('/api/wifi', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ssid, pass: $('#w-pass').value})});
+
+    $('#w-note').textContent = t('wMoved');
+    $('#w-pass').value = '';
+  } catch { $('#w-note').textContent = t('wMoved'); }
+};
+
+function put(sel, text){
+  const el = $(sel);
+  if (!el || el.textContent === String(text)) return;
+  el.textContent = text;
+  el.classList.remove('changed');
+  void el.offsetWidth;
+  el.classList.add('changed');
+}
+
+async function refresh(){
+  try{
+    const s = await (await fetch(CTRL + '/api/status')).json();
+    $('#model').textContent = s.model;
+    $('#s-link').textContent = t(s.link) || s.link;
+    $('#s-link').className = s.link === 'online' ? 'up' : 'down';
+    put('#s-ssid', s.ssid || '—');
+    put('#s-ip', s.ip);
+    put('#s-rssi', s.rssi ? s.rssi + ' dBm' : '—');
+    put('#s-up', s.uptime);
+    put('#s-psram', pair(s.psram_free, s.psram_total));
+    $('#b-psram').style.width = (100 - s.psram_free/s.psram_total*100).toFixed(0)+'%';
+    put('#s-sram', kb(s.sram_free));
+    put('#s-fs', pair(s.fs_free, s.fs_total));
+    $('#b-fs').style.width = (100 - s.fs_free/s.fs_total*100).toFixed(0)+'%';
+    put('#s-cam', s.camera ? t('ready') : t('off'));
+    put('#s-cmds', s.commands);
+    put('#s-ctx', s.context > 999 ? (s.context/1000).toFixed(1)+'k' : s.context);
+    $('#mdnsNote').textContent = 'http://' + s.host + '.local';
+
+    if (!$('#f-url').value){ $('#f-url').value = s.url; $('#f-model').value = s.model; $('#f-name').value = s.host; }
+
+    put('#f-space', pair(s.fs_free, s.fs_total));
+    $('#f-bar').style.width = (100 - s.fs_free/s.fs_total*100).toFixed(0)+'%';
+
+    const f = await (await fetch('/api/files')).json();
+    const box = $('#files');
+    if (!f.length){
+      box.innerHTML = '<div style="font-size:12.5px;color:var(--faint)">'+t('noFiles')+'</div>';
+    } else {
+      box.innerHTML = '';
+      f.forEach(x => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)';
+        row.innerHTML = '<a style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;'
+          + 'white-space:nowrap;font-size:12.5px;color:var(--text);text-decoration:none" download></a>'
+          + '<span class="sz"></span><button class="ib" style="height:22px;padding:0 7px">✕</button>';
+        const a = row.querySelector('a');
+        a.href = '/file?p=' + encodeURIComponent(x.path);
+        a.textContent = x.name;
+        a.setAttribute('download', x.name);
+        row.querySelector('.sz').textContent = kb(x.size);
+        row.querySelector('button').onclick = async () => {
+          if (!confirm(t('delFile') + ' ' + x.name + '?')) return;
+          await fetch('/api/rm', {method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({path: x.path})});
+          refresh();
+        };
+        box.appendChild(row);
+      });
+    }
+  } catch{}
+}
+$('#save').onclick = async () => {
+  const b = { url:$('#f-url').value, model:$('#f-model').value,
+              name:$('#f-name').value, key:$('#f-key').value, ssh:$('#f-ssh').value };
+  await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(b)});
+  $('#f-key').value = ''; $('#f-ssh').value = '';
+  $('#savedMsg').textContent = t('saved');
+  setTimeout(() => $('#savedMsg').textContent = '', 2200);
+  refresh();
+};
+
+histLoad(); histRender();
+applyTheme(); applyLang();
+profilesLoad();
+
+$$('.tab').forEach(b => { if (b.dataset.pane === 'settings') {
+  const prev = b.onclick;
+  b.onclick = () => { prev(); if (!$('#w-list').value) wifiScan(); };
+}});
+
+setInterval(refresh, 5000);
+
+if (!isPhone()) q.focus();
+</script>
+

@@ -1,0 +1,11 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+.cache/
+compile_commands.json
+components/micropython/build-embed/
+*.o
+*.pyc
+__pycache__/
+.DS_Store

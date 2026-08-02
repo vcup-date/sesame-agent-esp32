@@ -1,0 +1,9 @@
+dependencies:
+  idf:
+    version: '>=5.5'
+  # Pinned: 2.1.7 is the version the HS6839 camera fix was proven against.
+  espressif/esp32-camera: 2.1.7
+  espressif/mdns: ^1.2.0
+  wolfssl/wolfssl: ^5.7.0
+  wolfssl/wolfssh: ^1.4.0
+  espressif/led_strip: ^3.0.0

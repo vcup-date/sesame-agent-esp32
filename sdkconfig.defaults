@@ -1,0 +1,90 @@
+# sesame-agent-esp32 — ESP32-S3R8 (16MB flash, 8MB octal PSRAM), HS6839 board.
+# PSRAM values carried over verbatim from the working esp-who build; they are
+# board facts, not preferences. Do not "tidy" them.
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash. The eFuse reports quad lines and 16MB; the old build under-declared 8MB.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# PSRAM: octal, 80MHz, with code and rodata executed straight out of it.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Anything this big belongs in PSRAM, not in the 512K of internal SRAM.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# The agent task builds whole JSON request bodies on its stack frames.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# TLS to api.deepseek.com: trust the bundled roots rather than pinning one cert
+# that expires and bricks the product in the field.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y
+
+# Web server. The header limit must fit a REAL BROWSER's request, not curl's.
+# Chrome sends User-Agent, Accept, Accept-Language, Accept-Encoding and a pile
+# of sec-ch-ua/sec-fetch headers — comfortably over 1KB. When the request
+# exceeds this the server resets the connection, which looks like
+# ERR_CONNECTION_RESET in the browser while curl loads the same page fine.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=4096
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+# Two HTTP servers (:80 pages+chat, :81 control) plus the agent's outbound TLS
+# connection plus mDNS and SSH all draw from this one pool. The default of 10
+# is not enough: the servers claimed 7 each, starved each other, and left the
+# agent unable to open a socket to the API — which surfaced as both ports dead
+# and ESP_ERR_HTTP_CONNECT, while ping still worked because ICMP needs none.
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# Long filenames on the agent's working space.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
+# A cloud round trip can outlast the default watchdog window.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# SCCB at the slowest rate esp32-camera 2.1.7 actually allows. Its Kconfig range
+# is 100000..400000, so the 20000 this was originally set to was silently
+# clamped away with only a build warning — it never took effect. 100kHz is the
+# floor; the real cure for the clock-stretching hang is the bus recovery and
+# self-managed I2C bus in camera.c.
+CONFIG_SCCB_CLK_FREQ=100000
+
+# wolfSSL compiles the SSH key-derivation function (wc_SSH_KDF) only when it
+# knows wolfSSH is present. Without this the wolfssh build fails on an implicit
+# declaration, which reads like a wolfssh bug and is not one.
+CONFIG_ESP_ENABLE_WOLFSSH=y
+
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# BLE. The S3 has no classic Bluetooth, so NimBLE in observer/broadcaster roles
+# is the whole story. Brought up on first use rather than at boot — the
+# controller wants tens of KB of internal RAM, the scarcest resource here.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+# WiFi and BLE share one radio; without this they corrupt each other's slots.
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y

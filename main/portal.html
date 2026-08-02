@@ -1,0 +1,303 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>sesame agent</title>
+<style>
+:root{
+  --bg:#faf9f7; --card:#fff; --ink:#16151a; --muted:#6b6862; --faint:#a09c95;
+  --line:#e4e0d9; --accent:#166b57; --accent-ink:#fff; --bad:#a8392b;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#111114; --card:#1a1a1e; --ink:#ececf0; --muted:#9b9ba4;
+        --faint:#67676f; --line:#2b2b32; --accent:#4bb695; --accent-ink:#08110d;
+        --bad:#e0685c}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;min-height:100dvh;background:var(--bg);color:var(--ink);
+  font:16px/1.5 var(--sans);-webkit-font-smoothing:antialiased;
+  padding:max(26px,env(safe-area-inset-top)) 20px
+          calc(26px + env(safe-area-inset-bottom));
+}
+main{max-width:420px;margin:0 auto}
+
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+.brand svg{flex:none;color:var(--accent)}
+.brand h1{margin:0;font-size:23px;font-weight:650;letter-spacing:-.021em}
+.brand .sub{font:11px var(--mono);color:var(--faint);letter-spacing:.02em}
+.lede{margin:0 0 24px;color:var(--muted);font-size:15px}
+
+.step{margin-bottom:24px}
+.step h2{
+  margin:0 0 10px;font-size:12px;font-weight:650;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--faint);
+  display:flex;align-items:center;gap:8px;
+}
+.step h2 .n{
+  width:19px;height:19px;border-radius:50%;background:var(--ink);color:var(--bg);
+  display:grid;place-items:center;font-size:11px;letter-spacing:0;flex:none;
+}
+.step h2 .opt{text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)}
+
+.nets{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.net{
+  display:flex;align-items:center;gap:12px;width:100%;
+  padding:14px 15px;border:0;border-bottom:1px solid var(--line);
+  background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;
+  min-height:52px;
+}
+.net:last-child{border-bottom:0}
+.net:active,.net[aria-pressed=true]{background:var(--bg)}
+.net .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.net[aria-pressed=true] .name{font-weight:600}
+.net .tick{color:var(--accent);opacity:0;flex:none;display:flex}
+.net[aria-pressed=true] .tick{opacity:1}
+.net .lockicon{color:var(--faint);flex:none;display:flex}
+.net .open{color:var(--faint);font-size:12px;flex:none}
+.sig{display:flex;align-items:flex-end;gap:2px;height:13px;flex:none}
+.sig i{width:3px;background:var(--line);border-radius:1px}
+.sig i:nth-child(1){height:4px}.sig i:nth-child(2){height:7px}
+.sig i:nth-child(3){height:10px}.sig i:nth-child(4){height:13px}
+.sig i.on{background:var(--ink)}
+.scanning{padding:18px 15px;color:var(--muted);font-size:14.5px;display:flex;gap:10px;align-items:center}
+.spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--muted);
+      border-radius:50%;animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+label{display:block;font-size:13px;color:var(--muted);margin:14px 0 7px}
+label:first-child{margin-top:0}
+input,select{
+  width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;
+  background:var(--card);color:var(--ink);font-size:16px;font-family:inherit;
+}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+       linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+       background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;
+       background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:40px}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.hint{margin:8px 0 0;font-size:13px;color:var(--muted)}
+.hint.quiet{color:var(--faint)}
+
+details{margin-top:14px}
+summary{font-size:13.5px;color:var(--muted);cursor:pointer;list-style:none;padding:6px 0}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸ ";color:var(--faint)}
+details[open] summary::before{content:"▾ "}
+
+button.go{
+  width:100%;margin-top:6px;padding:16px;border:0;border-radius:12px;
+  background:var(--accent);color:var(--accent-ink);
+  font-size:16.5px;font-weight:600;cursor:pointer;min-height:52px;
+  transition:opacity .15s,transform .1s;
+}
+button.go:active{transform:scale(.99)}
+button.go:disabled{opacity:.45}
+
+#msg{margin-top:16px;font-size:14.5px;min-height:20px}
+#msg.bad{color:var(--bad)}
+
+#done{display:none;text-align:center;padding-top:7vh}
+#done.on{display:block}
+#done svg{color:var(--accent)}
+#done h2{margin:18px 0 8px;font-size:21px;letter-spacing:-.015em;color:var(--ink)}
+#done p{color:var(--muted);font-size:15px;margin:0 auto;max-width:330px}
+#done .addr{display:inline-block;margin-top:20px;padding:12px 16px;border-radius:12px;
+  background:var(--card);border:1px solid var(--line);font:15px var(--mono)}
+footer{margin-top:32px;text-align:center;font:11.5px var(--mono);color:var(--faint)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition:none!important}}
+</style>
+
+<main>
+  <div id="form">
+    <div class="brand">
+
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M1.8 16C6.4 8.9 11.4 5.4 16 5.4S25.6 8.9 30.2 16c-4.6 7.1-9.6 10.6-14.2 10.6S6.4 23.1 1.8 16Z"
+              stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+        <circle cx="16" cy="16" r="4.6" fill="currentColor"/>
+      </svg>
+      <div>
+        <h1>sesame agent</h1>
+        <div class="sub">ESP32-S3</div>
+      </div>
+    </div>
+    <p class="lede">Let's put this device on your Wi-Fi.</p>
+
+    <div class="step">
+      <h2><span class="n">·</span> Choose your network</h2>
+      <div class="nets" id="nets">
+        <div class="scanning"><span class="spin"></span> Looking for networks…</div>
+      </div>
+      <p class="hint quiet" id="bandNote">
+        Only <b>2.4&nbsp;GHz</b> networks appear — this chip has no 5&nbsp;GHz radio.
+        If yours is missing, it is probably 5&nbsp;GHz only.
+      </p>
+    </div>
+
+    <div class="step" id="passStep" style="display:none">
+      <h2><span class="n">·</span> Password</h2>
+      <input id="pass" type="password" autocomplete="off" autocapitalize="off"
+             autocorrect="off" placeholder="Wi-Fi password">
+    </div>
+
+    <div class="step">
+      <h2><span class="n">·</span> Model <span class="opt">— optional</span></h2>
+
+      <label for="prov">Provider</label>
+      <select id="prov"></select>
+
+      <label for="key">API key</label>
+      <input id="key" type="password" autocomplete="off" placeholder="paste your key">
+
+      <details id="adv">
+        <summary>Endpoint and model</summary>
+        <label for="url">Endpoint</label>
+        <input id="url" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <label for="model">Model</label>
+        <input id="model" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </details>
+
+      <p class="hint">Stored on the device only. You can skip this and set it later.</p>
+    </div>
+
+    <button class="go" id="go">Connect</button>
+    <p id="msg"></p>
+  </div>
+
+  <div id="done">
+    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10.4" stroke="currentColor" stroke-width="1.6" opacity=".35"/>
+      <path d="m7.2 12.3 3.2 3.2 6.4-6.9" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2>Joining your network</h2>
+    <p>This setup network is about to disappear — that is the device leaving to
+       join yours. Reconnect your phone to your normal Wi-Fi, then open:</p>
+    <div class="addr" id="host">sesame-agent.local</div>
+    <p class="hint" style="margin-top:14px">If that name does not open, find the
+       device's address on your router, or plug in USB and run <code>wifi status</code>.</p>
+  </div>
+
+  <footer id="dev">sesame-agent-esp32</footer>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+let chosen = null, locked = true;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const PROVIDERS = [
+  ['DeepSeek',    'https://api.deepseek.com',       'deepseek-v4-flash'],
+  ['OpenRouter',  'https://openrouter.ai/api/v1',   'deepseek/deepseek-chat'],
+  ['OpenAI',      'https://api.openai.com/v1',      'gpt-4o-mini'],
+  ['Groq',        'https://api.groq.com/openai/v1', 'llama-3.3-70b-versatile'],
+  ['Together',    'https://api.together.xyz/v1',    'meta-llama/Llama-3.3-70B-Instruct-Turbo'],
+  ['xAI',         'https://api.x.ai/v1',            'grok-2-latest'],
+  ['Mistral',     'https://api.mistral.ai/v1',      'mistral-small-latest'],
+  ['Ollama / LAN','http://192.168.1.10:11434/v1',   'qwen2.5:7b'],
+  ['Custom',      '',                               ''],
+];
+
+const LOCK = '<svg class="lockicon" width="11" height="13" viewBox="0 0 12 14" fill="none" aria-label="secured">'
+  + '<rect x="1" y="5.8" width="10" height="7.4" rx="1.8" stroke="currentColor" stroke-width="1.3"/>'
+  + '<path d="M3.4 5.8V3.9a2.6 2.6 0 0 1 5.2 0v1.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+const TICK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none">'
+  + '<path d="m5 12.5 4.5 4.5L19 7" stroke="currentColor" stroke-width="2.6" '
+  + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const bars = r => {
+  const n = r >= -55 ? 4 : r >= -65 ? 3 : r >= -75 ? 2 : 1;
+  return [1,2,3,4].map(i => '<i class="' + (i <= n ? 'on' : '') + '"></i>').join('');
+};
+
+function renumber(){
+  let n = 0;
+  document.querySelectorAll('.step').forEach(s => {
+    if (s.offsetParent === null) return;
+    s.querySelector('.n').textContent = ++n;
+  });
+}
+
+function paint(list){
+  const box = $('#nets');
+  if (!list.length){
+    box.innerHTML = '<div class="scanning">No 2.4 GHz networks found.</div>';
+    return;
+  }
+  box.innerHTML = list.map(n =>
+    '<button type="button" class="net" aria-pressed="false" data-ssid="' + esc(n.ssid) + '"'
+    + ' data-lock="' + (n.lock ? 1 : 0) + '">'
+    + '<span class="sig">' + bars(n.rssi) + '</span>'
+    + '<span class="name">' + esc(n.ssid) + '</span>'
+    + (n.lock ? LOCK : '<span class="open">open</span>')
+    + '<span class="tick">' + TICK + '</span></button>').join('');
+
+  box.querySelectorAll('.net').forEach(b => b.onclick = () => {
+    box.querySelectorAll('.net').forEach(o => o.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+    chosen = b.dataset.ssid;
+    locked = b.dataset.lock === '1';
+    $('#passStep').style.display = locked ? '' : 'none';
+    renumber();
+    if (locked) setTimeout(() => $('#pass').focus(), 120);
+  });
+  renumber();
+}
+
+function scan(){
+  $('#nets').innerHTML = '<div class="scanning"><span class="spin"></span> Looking for networks…</div>';
+  fetch('/scan').then(r => r.json()).then(paint).catch(() => paint([]));
+}
+
+(function providers(){
+  const sel = $('#prov');
+  sel.innerHTML = PROVIDERS.map((p, i) => '<option value="' + i + '">' + p[0] + '</option>').join('');
+  const apply = () => {
+    const p = PROVIDERS[sel.value];
+
+    if (!p || !p[1]) { $('#adv').open = true; return; }
+    $('#url').value = p[1];
+    $('#model').value = p[2];
+  };
+  sel.onchange = apply;
+  apply();
+})();
+
+scan();
+renumber();
+
+fetch('/info').then(r => r.json()).then(i => {
+  $('#dev').textContent = i.mac + ' · ' + i.psram + ' KB psram · ' + i.fs + ' KB free';
+  $('#host').textContent = i.host + '.local';
+}).catch(() => {});
+
+$('#go').onclick = async () => {
+  if (!chosen){
+    $('#msg').className = 'bad';
+    $('#msg').textContent = 'Pick a network first.';
+    return;
+  }
+  $('#go').disabled = true;
+  $('#msg').className = '';
+  $('#msg').textContent = 'Saving…';
+  try{
+    const r = await fetch('/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ssid: chosen, pass: $('#pass').value,
+                            key: $('#key').value, url: $('#url').value,
+                            model: $('#model').value})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    $('#form').style.display = 'none';
+    $('#done').classList.add('on');
+  } catch(err){
+    $('#go').disabled = false;
+    $('#msg').className = 'bad';
+    $('#msg').textContent = 'Could not save: ' + err.message;
+  }
+};
+</script>
+
