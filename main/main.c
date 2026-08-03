@@ -74,6 +74,8 @@ void app_main(void)
     cmd_peer_register();
     cmd_motor_register();
     cmd_sniff_register();
+    cmd_cron_register();
+    cmd_skill_register();
     cmd_pins_register();
     cmd_disp_register();
     cmd_net_register();
@@ -92,6 +94,8 @@ void app_main(void)
     py_init();
 
     ESP_ERROR_CHECK(net_start());
+
+    cron_start();
 
     console_start();
 }

@@ -48,7 +48,9 @@ static int max_hops(void)
 // What does constrain it is PSRAM. Peak use is roughly 3.3x the encoded size:
 // the cJSON structure, plus the request body, plus whatever the HTTP layer
 // holds. With ~6MB free that puts the hard ceiling near 1.8MB of conversation,
-// so the maximum here is 1MB and the default sits well below it.
+// With the body streamed rather than built, only the tree remains, so the
+// ceiling moved from ~650k tokens to roughly 1.1M and the maximum here is
+// 4.5M characters, about 1.1M tokens.
 //
 // The previous default was 48KB, which was a guess of mine and about twenty
 // times too small.
@@ -58,7 +60,7 @@ static int max_context(void)
 {
     int c = atoi(cfg_get("agent.ctx", "262144"));
     if (c < 4096)      c = 4096;
-    if (c > 1024*1024) c = 1024*1024;
+    if (c > 4500000) c = 4500000;
     return c;
 }
 
@@ -150,7 +152,12 @@ static char *build_system_prompt(void)
         "returned to you.\n"
         "- The colour LED is `rgb` and `led` on GPIO48. The red LED is wired "
         "across the power rail with no GPIO, and the blue one is the UART "
-        "transmit line, so neither can be switched.\n");
+        "transmit line, so neither can be switched.\n"
+        "- `skill list` names saved procedures and `skill show <name>` reads "
+        "one. Check it when a task sounds like something done before, and "
+        "write a skill when you work something out worth keeping.\n"
+        "- `cron` schedules a command to repeat. Jobs expire after 7 days "
+        "unless created with -k, and only survive a reboot with -g.\n");
 
     return b.buf;
 }
@@ -195,114 +202,197 @@ static cJSON *build_tools(void)
     return tools;
 }
 
-typedef struct {
-    char  *buf;
-    size_t len;
-    size_t cap;
-} resp_t;
 
-static esp_err_t on_http_event(esp_http_client_event_t *evt)
-{
-    resp_t *r = evt->user_data;
 
-    if (evt->event_id != HTTP_EVENT_ON_DATA || !r) {
-        return ESP_OK;
-    }
-    if (r->len + evt->data_len + 1 > MAX_RESPONSE) {
-        return ESP_OK;
-    }
-    if (r->len + evt->data_len + 1 > r->cap) {
-        size_t want = (r->len + evt->data_len + 1) * 2;
-        char *grown = heap_caps_realloc(r->buf, want, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (!grown) {
-            grown = realloc(r->buf, want);
-        }
-        if (!grown) {
-            return ESP_ERR_NO_MEM;
-        }
-        r->buf = grown;
-        r->cap = want;
-    }
-    memcpy(r->buf + r->len, evt->data, evt->data_len);
-    r->len += evt->data_len;
-    r->buf[r->len] = '\0';
-    return ESP_OK;
-}
 
-static cJSON *post_completion(const char *body, int *status, char **err_text)
+// Send the request without ever holding it whole.
+//
+// The old path built the entire body with cJSON_PrintUnformatted and handed
+// that string to the HTTP client, so at the moment of sending the conversation
+// existed twice: once as the cJSON tree, once as one enormous string. That
+// second copy is what set the ceiling, because the peak was about 2.3x the
+// conversation and 6MB of PSRAM therefore ran out around 650k tokens.
+//
+// Here each message is serialised on its own, written to the socket, and freed
+// before the next one. Peak is the tree plus a single message. Content-Length
+// has to be known before the first byte goes out, so the messages are measured
+// in one pass and written in a second: twice the CPU, a fraction of the memory,
+// and no dependency on the server accepting chunked encoding.
+static cJSON *post_stream(cJSON *messages, cJSON *tools, int max_tokens,
+                          int *status, char **err_text)
 {
     char url[192];
     const char *base = cfg_get(CFG_API_URL, "https://api.deepseek.com");
-
     size_t blen = strlen(base);
     bool has_slash = blen && base[blen - 1] == '/';
     snprintf(url, sizeof(url), "%s%schat/completions", base, has_slash ? "" : "/");
 
-    char auth[160];
+    char auth[400];
     snprintf(auth, sizeof(auth), "Bearer %s", cfg_get(CFG_API_KEY, ""));
 
-    resp_t resp = { 0 };
+    char head[256];
+    int head_len = snprintf(head, sizeof(head),
+        "{\"model\":\"%s\",\"max_tokens\":%d,\"messages\":[",
+        cfg_get(CFG_API_MODEL, "deepseek-v4-flash"), max_tokens);
+
+    char *tools_json = NULL;
+    int tail_len;
+    char tail[64];
+    if (tools) {
+        tools_json = cJSON_PrintUnformatted(tools);
+        if (!tools_json) {
+            *err_text = strdup("out of memory");
+            return NULL;
+        }
+        tail_len = snprintf(tail, sizeof(tail), "],\"tool_choice\":\"auto\",\"tools\":");
+    } else {
+        tail_len = snprintf(tail, sizeof(tail), "]");
+    }
+
+    // Pass one: how long is the whole thing.
+    int total = head_len + tail_len + 1;   // +1 for the closing brace
+    if (tools_json) {
+        total += strlen(tools_json);
+    }
+    int n = cJSON_GetArraySize(messages);
+    for (int i = 0; i < n; i++) {
+        char *m = cJSON_PrintUnformatted(cJSON_GetArrayItem(messages, i));
+        if (!m) {
+            free(tools_json);
+            *err_text = strdup("out of memory measuring the request");
+            return NULL;
+        }
+        total += strlen(m) + (i ? 1 : 0);   // comma between messages
+        free(m);
+    }
+
+    // No event handler here: the body is read explicitly below. Leaving one
+    // attached would buffer the whole response a second time.
     esp_http_client_config_t cfg = {
         .url               = url,
         .method            = HTTP_METHOD_POST,
-        .event_handler     = on_http_event,
-        .user_data         = &resp,
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms        = 90000,
+        .timeout_ms        = 180000,
         .buffer_size       = 2048,
         .buffer_size_tx    = 2048,
     };
-
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if (!client) {
+        free(tools_json);
         *err_text = strdup("could not create the HTTP client");
         return NULL;
     }
-
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_header(client, "Authorization", auth);
-    esp_http_client_set_post_field(client, body, strlen(body));
 
-    esp_err_t err = esp_http_client_perform(client);
-    *status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
-
+    esp_err_t err = esp_http_client_open(client, total);
     if (err != ESP_OK) {
+        free(tools_json);
+        esp_http_client_cleanup(client);
         char msg[128];
         snprintf(msg, sizeof(msg), "network: %s", esp_err_to_name(err));
         *err_text = strdup(msg);
-        free(resp.buf);
         return NULL;
     }
 
-    if (*status != 200) {
+    // Pass two: write it out a message at a time.
+    int sent = 0;
+    bool ok = esp_http_client_write(client, head, head_len) == head_len;
+    sent += head_len;
+    for (int i = 0; ok && i < n; i++) {
+        if (i) {
+            ok = esp_http_client_write(client, ",", 1) == 1;
+            sent += 1;
+        }
+        char *m = ok ? cJSON_PrintUnformatted(cJSON_GetArrayItem(messages, i)) : NULL;
+        if (!m) {
+            ok = false;
+            break;
+        }
+        int len = strlen(m);
+        ok = esp_http_client_write(client, m, len) == len;
+        sent += len;
+        free(m);
+    }
+    if (ok) {
+        ok = esp_http_client_write(client, tail, tail_len) == tail_len;
+        sent += tail_len;
+    }
+    if (ok && tools_json) {
+        int len = strlen(tools_json);
+        ok = esp_http_client_write(client, tools_json, len) == len;
+        sent += len;
+    }
+    if (ok) {
+        ok = esp_http_client_write(client, "}", 1) == 1;
+        sent += 1;
+    }
+    free(tools_json);
 
+    // The two passes must agree exactly. If they ever do not, the server is
+    // left waiting for bytes that never come and the request hangs until it
+    // times out, which is a miserable thing to debug from a symptom.
+    if (ok && sent != total) {
+        ESP_LOGE(TAG, "content-length %d but wrote %d", total, sent);
+    }
+
+    if (!ok) {
+        esp_http_client_cleanup(client);
+        *err_text = strdup("connection dropped while sending");
+        return NULL;
+    }
+
+    if (esp_http_client_fetch_headers(client) < 0) {
+        esp_http_client_cleanup(client);
+        *err_text = strdup("no response headers");
+        return NULL;
+    }
+    *status = esp_http_client_get_status_code(client);
+
+    // The event handler is not used on this path, so read the body directly.
+    int cap = 4096, got = 0;
+    char *buf = heap_caps_malloc(cap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!buf) buf = malloc(cap);
+    while (buf) {
+        if (got + 1024 > cap) {
+            int want = cap * 2;
+            if (want > MAX_RESPONSE) { break; }
+            char *g = heap_caps_realloc(buf, want, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (!g) g = realloc(buf, want);
+            if (!g) break;
+            buf = g; cap = want;
+        }
+        int r = esp_http_client_read(client, buf + got, cap - got - 1);
+        if (r <= 0) break;
+        got += r;
+    }
+    if (buf) buf[got] = '\0';
+    esp_http_client_cleanup(client);
+
+    if (*status != 200) {
         char msg[320];
-        const char *detail = resp.buf ? resp.buf : "(no body)";
-        cJSON *j = resp.buf ? cJSON_Parse(resp.buf) : NULL;
+        const char *detail = buf && buf[0] ? buf : "(no body)";
+        cJSON *j = buf ? cJSON_Parse(buf) : NULL;
         if (j) {
             cJSON *e = cJSON_GetObjectItem(j, "error");
             cJSON *m = e ? cJSON_GetObjectItem(e, "message") : NULL;
-            if (cJSON_IsString(m)) {
-                detail = m->valuestring;
-            }
+            if (cJSON_IsString(m)) detail = m->valuestring;
         }
         snprintf(msg, sizeof(msg), "HTTP %d: %.240s", *status, detail);
         *err_text = strdup(msg);
-        if (j) {
-            cJSON_Delete(j);
-        }
-        free(resp.buf);
+        if (j) cJSON_Delete(j);
+        free(buf);
         return NULL;
     }
 
-    cJSON *parsed = resp.buf ? cJSON_Parse(resp.buf) : NULL;
+    cJSON *parsed = buf ? cJSON_Parse(buf) : NULL;
     if (!parsed) {
         *err_text = strdup("could not parse the reply");
     }
-    free(resp.buf);
+    free(buf);
     return parsed;
 }
+
 
 // Sum the strings rather than serialising the whole conversation.
 //
@@ -374,7 +464,6 @@ static bool compact_context(void)
         return false;
     }
 
-    cJSON *req  = cJSON_CreateObject();
     cJSON *msgs = cJSON_CreateArray();
     for (int i = 1; i < cut; i++) {
         cJSON_AddItemToArray(msgs, cJSON_Duplicate(cJSON_GetArrayItem(s_messages, i), true));
@@ -388,21 +477,11 @@ static bool compact_context(void)
         "it as notes, not prose. Do not call any tools.");
     cJSON_AddItemToArray(msgs, ask);
 
-    cJSON_AddStringToObject(req, "model", cfg_get(CFG_API_MODEL, "deepseek-v4-flash"));
-    cJSON_AddItemToObject(req, "messages", msgs);
-    cJSON_AddNumberToObject(req, "max_tokens", 400);
-
-    char *body = cJSON_PrintUnformatted(req);
-    cJSON_Delete(req);
-    if (!body) {
-        return false;
-    }
-
     int status = 0;
     char *err = NULL;
     ESP_LOGI(TAG, "compacting %d messages", cut - 1);
-    cJSON *reply = post_completion(body, &status, &err);
-    free(body);
+    cJSON *reply = post_stream(msgs, NULL, 400, &status, &err);
+    cJSON_Delete(msgs);
     free(err);
     if (!reply) {
         return false;
@@ -549,26 +628,10 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
         }
         trim_context();
 
-        cJSON *req = cJSON_CreateObject();
-        cJSON_AddStringToObject(req, "model", cfg_get(CFG_API_MODEL, "deepseek-v4-flash"));
-        cJSON_AddItemReferenceToObject(req, "messages", s_messages);
-        cJSON_AddItemReferenceToObject(req, "tools", tools);
-        cJSON_AddStringToObject(req, "tool_choice", "auto");
-        cJSON_AddNumberToObject(req, "max_tokens", 2048);
-
-        char *body = cJSON_PrintUnformatted(req);
-        cJSON_Delete(req);
-        if (!body) {
-            emit(fn, ctx, AGENT_ERROR, "out of memory building the request");
-            result = ESP_ERR_NO_MEM;
-            break;
-        }
-
         int status = 0;
         char *err_text = NULL;
-        ESP_LOGI(TAG, "hop %d, %u bytes out", hop + 1, (unsigned)strlen(body));
-        cJSON *reply = post_completion(body, &status, &err_text);
-        free(body);
+        ESP_LOGI(TAG, "hop %d, ~%d chars of context", hop + 1, context_chars());
+        cJSON *reply = post_stream(s_messages, tools, 2048, &status, &err_text);
 
         if (!reply) {
             emit(fn, ctx, AGENT_ERROR, err_text ? err_text : "request failed");

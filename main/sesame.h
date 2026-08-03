@@ -59,3 +59,6 @@ void cmd_netcmds_register(void);
 void cmd_peer_register(void);
 void cmd_motor_register(void);
 void cmd_sniff_register(void);
+void cmd_cron_register(void);
+void cron_start(void);
+void cmd_skill_register(void);

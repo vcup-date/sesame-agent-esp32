@@ -16,6 +16,8 @@ idf_component_register(
         "peer.c"
         "motor.c"
         "sniff.c"
+        "cron.c"
+        "skill.c"
         "display.c"
         "cmd_pins.c"
         "camera.c"
