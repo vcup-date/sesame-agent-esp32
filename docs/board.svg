@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 600" width="1180" height="600" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">
+  <defs>
+    <linearGradient id="pcb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20242b"/>
+      <stop offset="1" stop-color="#15181d"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b9c0c8"/>
+      <stop offset="1" stop-color="#8b929b"/>
+    </linearGradient>
+    <linearGradient id="usb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d8dde3"/>
+      <stop offset="1" stop-color="#a7aeb6"/>
+    </linearGradient>
+    <radialGradient id="glowRed" cx="50%" cy="50%">
+      <stop offset="0" stop-color="#ff4d4d" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ff4d4d" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="50%" cy="50%">
+      <stop offset="0" stop-color="#4da3ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#4da3ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowRgb" cx="50%" cy="50%">
+      <stop offset="0" stop-color="#2ecf9b" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#2ecf9b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="lens" cx="42%" cy="36%">
+      <stop offset="0" stop-color="#4a5158"/>
+      <stop offset="0.55" stop-color="#1b1f24"/>
+      <stop offset="1" stop-color="#0a0c0e"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1180" height="600" fill="#0b0d10"/>
+
+  <!-- ── board ──────────────────────────────────────────────── -->
+  <g transform="translate(70,60)">
+    <rect x="0" y="0" width="1040" height="280" rx="10" fill="url(#pcb)" stroke="#2f353d"/>
+
+    <!-- mounting holes -->
+    <circle cx="22" cy="22" r="7" fill="#0b0d10" stroke="#3a424c"/>
+    <circle cx="1018" cy="22" r="7" fill="#0b0d10" stroke="#3a424c"/>
+    <circle cx="22" cy="258" r="7" fill="#0b0d10" stroke="#3a424c"/>
+    <circle cx="1018" cy="258" r="7" fill="#0b0d10" stroke="#3a424c"/>
+
+    <!-- header rails -->
+    <g fill="#c9a227">
+      <g id="topPins">
+        <!-- 20 pads across the top -->
+        <g>
+          <rect x="60"  y="16" width="13" height="13" rx="2"/><rect x="105" y="16" width="13" height="13" rx="2"/>
+          <rect x="150" y="16" width="13" height="13" rx="2"/><rect x="195" y="16" width="13" height="13" rx="2"/>
+          <rect x="240" y="16" width="13" height="13" rx="2"/><rect x="285" y="16" width="13" height="13" rx="2"/>
+          <rect x="330" y="16" width="13" height="13" rx="2"/><rect x="375" y="16" width="13" height="13" rx="2"/>
+          <rect x="420" y="16" width="13" height="13" rx="2"/><rect x="465" y="16" width="13" height="13" rx="2"/>
+          <rect x="510" y="16" width="13" height="13" rx="2"/><rect x="555" y="16" width="13" height="13" rx="2"/>
+          <rect x="600" y="16" width="13" height="13" rx="2"/><rect x="645" y="16" width="13" height="13" rx="2"/>
+          <rect x="690" y="16" width="13" height="13" rx="2"/><rect x="735" y="16" width="13" height="13" rx="2"/>
+          <rect x="780" y="16" width="13" height="13" rx="2"/><rect x="825" y="16" width="13" height="13" rx="2"/>
+          <rect x="870" y="16" width="13" height="13" rx="2"/><rect x="915" y="16" width="13" height="13" rx="2"/>
+        </g>
+      </g>
+      <g id="botPins">
+        <rect x="60"  y="251" width="13" height="13" rx="2"/><rect x="105" y="251" width="13" height="13" rx="2"/>
+        <rect x="150" y="251" width="13" height="13" rx="2"/><rect x="195" y="251" width="13" height="13" rx="2"/>
+        <rect x="240" y="251" width="13" height="13" rx="2"/><rect x="285" y="251" width="13" height="13" rx="2"/>
+        <rect x="330" y="251" width="13" height="13" rx="2"/><rect x="375" y="251" width="13" height="13" rx="2"/>
+        <rect x="420" y="251" width="13" height="13" rx="2"/><rect x="465" y="251" width="13" height="13" rx="2"/>
+        <rect x="510" y="251" width="13" height="13" rx="2"/><rect x="555" y="251" width="13" height="13" rx="2"/>
+        <rect x="600" y="251" width="13" height="13" rx="2"/><rect x="645" y="251" width="13" height="13" rx="2"/>
+        <rect x="690" y="251" width="13" height="13" rx="2"/><rect x="735" y="251" width="13" height="13" rx="2"/>
+        <rect x="780" y="251" width="13" height="13" rx="2"/><rect x="825" y="251" width="13" height="13" rx="2"/>
+        <rect x="870" y="251" width="13" height="13" rx="2"/><rect x="915" y="251" width="13" height="13" rx="2"/>
+      </g>
+    </g>
+
+    <!-- header labels -->
+    <g fill="#7f8790" font-size="11">
+      <text x="66"  y="46" text-anchor="middle">3V3</text><text x="111" y="46" text-anchor="middle">EN</text>
+      <text x="156" y="46" text-anchor="middle">G4</text><text x="201" y="46" text-anchor="middle">G5</text>
+      <text x="246" y="46" text-anchor="middle">G6</text><text x="291" y="46" text-anchor="middle">G7</text>
+      <text x="336" y="46" text-anchor="middle">G15</text><text x="381" y="46" text-anchor="middle">G16</text>
+      <text x="426" y="46" text-anchor="middle">G17</text><text x="471" y="46" text-anchor="middle">G18</text>
+      <text x="516" y="46" text-anchor="middle">G8</text><text x="561" y="46" text-anchor="middle">G3</text>
+      <text x="606" y="46" text-anchor="middle">G46</text><text x="651" y="46" text-anchor="middle">G9</text>
+      <text x="696" y="46" text-anchor="middle">G10</text><text x="741" y="46" text-anchor="middle">G11</text>
+      <text x="786" y="46" text-anchor="middle">G12</text><text x="831" y="46" text-anchor="middle">G13</text>
+      <text x="876" y="46" text-anchor="middle">G14</text><text x="921" y="46" text-anchor="middle">5V</text>
+    </g>
+    <g fill="#7f8790" font-size="11">
+      <text x="66"  y="243" text-anchor="middle">GND</text><text x="111" y="243" text-anchor="middle">G19</text>
+      <text x="156" y="243" text-anchor="middle">G20</text><text x="201" y="243" text-anchor="middle">G21</text>
+      <text x="246" y="243" text-anchor="middle">G47</text><text x="291" y="243" text-anchor="middle">G48</text>
+      <text x="336" y="243" text-anchor="middle">G45</text><text x="381" y="243" text-anchor="middle">G0</text>
+      <text x="426" y="243" text-anchor="middle">G35</text><text x="471" y="243" text-anchor="middle">G36</text>
+      <text x="516" y="243" text-anchor="middle">G37</text><text x="561" y="243" text-anchor="middle">G38</text>
+      <text x="606" y="243" text-anchor="middle">G39</text><text x="651" y="243" text-anchor="middle">G40</text>
+      <text x="696" y="243" text-anchor="middle">G41</text><text x="741" y="243" text-anchor="middle">G42</text>
+      <text x="786" y="243" text-anchor="middle">G2</text><text x="831" y="243" text-anchor="middle">G1</text>
+      <text x="876" y="243" text-anchor="middle">RX0</text><text x="921" y="243" text-anchor="middle">TX0</text>
+    </g>
+
+    <!-- usb-c pair on the left edge -->
+    <g>
+      <rect x="-14" y="72" width="44" height="24" rx="11" fill="url(#usb)" stroke="#7d858e"/>
+      <rect x="-6"  y="79" width="28" height="10" rx="5" fill="#454b52"/>
+      <text x="46" y="88" fill="#6f7780" font-size="11">OTG</text>
+
+      <rect x="-14" y="168" width="44" height="24" rx="11" fill="url(#usb)" stroke="#7d858e"/>
+      <rect x="-6"  y="175" width="28" height="10" rx="5" fill="#454b52"/>
+      <text x="46" y="184" fill="#6f7780" font-size="11">UART</text>
+    </g>
+
+    <!-- esp32-s3 module -->
+    <g transform="translate(120,86)">
+      <rect x="0" y="0" width="230" height="112" rx="4" fill="url(#shield)" stroke="#767d86"/>
+      <rect x="6" y="6" width="218" height="100" rx="3" fill="none" stroke="#9aa1a9" stroke-width="0.8"/>
+      <text x="115" y="52" text-anchor="middle" fill="#2b3138" font-size="15" font-weight="700">ESP32-S3</text>
+      <text x="115" y="72" text-anchor="middle" fill="#4a525b" font-size="11">16MB · 8MB PSRAM</text>
+      <!-- antenna -->
+      <g transform="translate(232,14)" fill="none" stroke="#c9a227" stroke-width="3">
+        <path d="M0 0 h20 v14 h-14 v14 h20 v14 h-14 v14 h20 v14 h-14 v14 h20"/>
+      </g>
+    </g>
+
+    <!-- camera module -->
+    <g transform="translate(640,66)">
+      <rect x="0" y="0" width="150" height="150" rx="6" fill="#e8e6cf" stroke="#c3c0a6"/>
+      <rect x="18" y="18" width="114" height="114" rx="4" fill="#14181c"/>
+      <circle cx="75" cy="75" r="46" fill="url(#lens)"/>
+      <circle cx="75" cy="75" r="27" fill="#0d1013"/>
+      <circle cx="62" cy="60" r="9" fill="#ffffff" opacity="0.10"/>
+      <!-- fpc ribbon -->
+      <path d="M-58 60 h58 v34 h-58 z" fill="#c98a3c"/>
+      <rect x="-84" y="52" width="30" height="50" rx="3" fill="#f2efe6" stroke="#c9c5b6"/>
+    </g>
+
+    <!-- buttons -->
+    <g fill="#3c434b" stroke="#565e68">
+      <rect x="128" y="204" width="24" height="20" rx="3"/>
+      <rect x="212" y="204" width="24" height="20" rx="3"/>
+    </g>
+    <text x="158" y="219" fill="#6f7780" font-size="10">BOOT</text>
+    <text x="242" y="219" fill="#6f7780" font-size="10">RST</text>
+
+    <!-- the three LEDs -->
+    <g>
+      <circle cx="400" cy="222" r="20" fill="url(#glowRed)"/>
+      <rect x="394" y="216" width="12" height="12" rx="2" fill="#ff5555"/>
+
+      <circle cx="446" cy="222" r="20" fill="url(#glowBlue)"/>
+      <rect x="440" y="216" width="12" height="12" rx="2" fill="#5aa9ff"/>
+
+      <circle cx="492" cy="222" r="22" fill="url(#glowRgb)"/>
+      <rect x="486" y="216" width="12" height="12" rx="2" fill="#35d9a6"/>
+    </g>
+
+    <text x="915" y="132" text-anchor="middle" fill="#525960" font-size="13">GOOUUU</text>
+    <text x="915" y="152" text-anchor="middle" fill="#525960" font-size="13">ESP32-S3-CAM</text>
+  </g>
+
+  <!-- ── legend, kept clear of the artwork ─────────────────── -->
+  <g font-size="12.5" fill="#8b939c">
+    <line x1="70" y1="392" x2="1110" y2="392" stroke="#232830"/>
+
+    <g transform="translate(70,424)">
+      <text fill="#cfd6dd" font-size="13">the three lights</text>
+      <text y="24"><tspan fill="#ff5555">■</tspan>  PWR   across 3V3, no GPIO</text>
+      <text y="44"><tspan fill="#5aa9ff">■</tspan>  TX    GPIO43, the UART line</text>
+      <text y="64"><tspan fill="#35d9a6">■</tspan>  RGB   GPIO48, the status light</text>
+    </g>
+
+    <g transform="translate(430,424)">
+      <text fill="#cfd6dd" font-size="13">camera, OV2640</text>
+      <text y="24">XCLK 15 · SDA 4 · SCL 5</text>
+      <text y="44">VSYNC 6 · HREF 7 · PCLK 13</text>
+      <text y="64">data 16 17 18 12 10 8 9 11</text>
+    </g>
+
+    <g transform="translate(790,424)">
+      <text fill="#cfd6dd" font-size="13">free for your own use</text>
+      <text y="24" fill="#c9a227">1 · 2 · 14 · 21 · 41 · 42 · 47</text>
+      <text y="52" fill="#6b727b">26-32 are SPI flash and 33-37 are</text>
+      <text y="70" fill="#6b727b">the octal PSRAM bus. Driving either</text>
+      <text y="88" fill="#6b727b">hangs the chip; both are refused.</text>
+    </g>
+  </g>
+</svg>
