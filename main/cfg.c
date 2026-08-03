@@ -10,7 +10,7 @@
 static const char *TAG = "cfg";
 static const char *NAMESPACE = "sesame";
 
-#define CFG_VALUE_MAX 160
+#define CFG_VALUE_MAX 320
 
 static struct {
     const char *key;
@@ -33,7 +33,7 @@ static struct {
     { "net.gw",      ""                         },
     { "net.mask",    "255.255.255.0"            },
     { "agent.hops",  "64"                       },
-    { "agent.ctx",   "49152"                    },
+    { "agent.ctx",   "262144"                   },
 };
 
 static const int CFG_N = sizeof(s_cfg) / sizeof(s_cfg[0]);

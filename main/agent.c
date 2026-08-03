@@ -41,13 +41,24 @@ static int max_hops(void)
 // discarded. Configurable: the model's own window is far larger than this, and
 // the real cost here is that every hop re-uploads the whole conversation over
 // WiFi, so the right value depends on how good your link is.
-#define DEFAULT_CONTEXT (48 * 1024)
+// Measured, not guessed. Round trip time was flat from 0 to 24k characters of
+// context on this device (3.5s, 3.6s, 3.2s, 3.9s), so transfer is not the
+// constraint at any sane size; the model's own thinking time dominates.
+//
+// What does constrain it is PSRAM. Peak use is roughly 3.3x the encoded size:
+// the cJSON structure, plus the request body, plus whatever the HTTP layer
+// holds. With ~6MB free that puts the hard ceiling near 1.8MB of conversation,
+// so the maximum here is 1MB and the default sits well below it.
+//
+// The previous default was 48KB, which was a guess of mine and about twenty
+// times too small.
+#define DEFAULT_CONTEXT (256 * 1024)
 
 static int max_context(void)
 {
-    int c = atoi(cfg_get("agent.ctx", "49152"));
-    if (c < 4096)     c = 4096;
-    if (c > 512*1024) c = 512*1024;
+    int c = atoi(cfg_get("agent.ctx", "262144"));
+    if (c < 4096)      c = 4096;
+    if (c > 1024*1024) c = 1024*1024;
     return c;
 }
 
@@ -56,6 +67,11 @@ static SemaphoreHandle_t s_lock;
 static int               s_turns;
 static bool              s_busy;
 static volatile bool     s_stop;
+// Prefix caching is the single biggest lever on this device: an unchanged
+// prefix comes back ~99% cached, which skips re-processing it. Worth showing,
+// because it also means compaction is not free: rewriting the older half
+// changes the prefix and throws the cache away.
+static uint32_t s_cache_hit, s_cache_miss;
 
 bool agent_busy(void)  { return s_busy; }
 int  agent_turns(void) { return s_turns; }
@@ -288,15 +304,36 @@ static cJSON *post_completion(const char *body, int *status, char **err_text)
     return parsed;
 }
 
+// Sum the strings rather than serialising the whole conversation.
+//
+// This used to call cJSON_PrintUnformatted purely to measure a length, which
+// allocates and fills a complete copy of the conversation on every call, and
+// trim_context calls it inside a loop. That is quadratic, and at a megabyte of
+// context it would dominate everything else the device does. Walking the tree
+// costs no allocation at all. The figure is an estimate of the encoded size,
+// which is all a threshold needs.
 static int context_chars(void)
 {
     if (!s_messages) {
         return 0;
     }
-    char *s = cJSON_PrintUnformatted(s_messages);
-    int n = s ? strlen(s) : 0;
-    free(s);
-    return n;
+    int total = 0;
+    cJSON *m = NULL;
+    cJSON_ArrayForEach(m, s_messages) {
+        cJSON *f = NULL;
+        cJSON_ArrayForEach(f, m) {
+            if (cJSON_IsString(f) && f->valuestring) {
+                total += strlen(f->valuestring);
+            } else if (cJSON_IsArray(f) || cJSON_IsObject(f)) {
+                // tool_calls: rare and small next to content, so a rough
+                // allowance beats another full serialisation.
+                total += 200;
+            }
+            total += f->string ? strlen(f->string) + 6 : 6;
+        }
+        total += 4;
+    }
+    return total;
 }
 
 int agent_context_chars(void) { return context_chars(); }
@@ -550,6 +587,14 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
             break;
         }
 
+        cJSON *usage = cJSON_GetObjectItem(reply, "usage");
+        if (usage) {
+            cJSON *h = cJSON_GetObjectItem(usage, "prompt_cache_hit_tokens");
+            cJSON *m = cJSON_GetObjectItem(usage, "prompt_cache_miss_tokens");
+            if (cJSON_IsNumber(h)) s_cache_hit  += (uint32_t)h->valuedouble;
+            if (cJSON_IsNumber(m)) s_cache_miss += (uint32_t)m->valuedouble;
+        }
+
         cJSON *content    = cJSON_GetObjectItem(message, "content");
         cJSON *tool_calls = cJSON_GetObjectItem(message, "tool_calls");
 
@@ -685,6 +730,11 @@ static int cmd_agent(int argc, char **argv, sesame_out_t *out)
     sesame_printf(out, "prompt   %d chars, %d commands exposed\n",
                   agent_prompt_bytes(), sesame_cmd_count());
     sesame_printf(out, "hops     up to %d tool calls per turn (cfg set agent.hops N)\n", max_hops());
+    sesame_printf(out, "compact  at %d chars (cfg set agent.ctx N)\n", max_context());
+    uint32_t tot = s_cache_hit + s_cache_miss;
+    sesame_printf(out, "prefix   %u of %u prompt tokens served from cache%s\n",
+                  (unsigned)s_cache_hit, (unsigned)tot,
+                  tot ? "" : " (nothing sent yet)");
     return 0;
 }
 

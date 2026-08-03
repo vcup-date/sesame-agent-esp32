@@ -131,12 +131,16 @@ static void stream_emit(void *ctx, agent_ev_t ev, const char *text)
 
 static esp_err_t chat_post(httpd_req_t *req)
 {
-    if (req->content_len <= 0 || req->content_len > 4096) {
+    if (req->content_len <= 0 || req->content_len > 65536) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad length");
         return ESP_FAIL;
     }
 
-    char *body = malloc(req->content_len + 1);
+    char *body = heap_caps_malloc(req->content_len + 1,
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!body) {
+        body = malloc(req->content_len + 1);
+    }
     if (!body) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no memory");
         return ESP_FAIL;
@@ -182,12 +186,16 @@ static esp_err_t reset_post(httpd_req_t *req)
 
 static esp_err_t exec_post(httpd_req_t *req)
 {
-    if (req->content_len <= 0 || req->content_len > 8192) {
+    if (req->content_len <= 0 || req->content_len > 262144) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad length");
         return ESP_FAIL;
     }
 
-    char *body = malloc(req->content_len + 1);
+    char *body = heap_caps_malloc(req->content_len + 1,
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!body) {
+        body = malloc(req->content_len + 1);
+    }
     if (!body) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no memory");
         return ESP_FAIL;
@@ -224,7 +232,11 @@ static cJSON *read_json(httpd_req_t *req, size_t limit)
     if (req->content_len <= 0 || (size_t)req->content_len > limit) {
         return NULL;
     }
-    char *body = malloc(req->content_len + 1);
+    char *body = heap_caps_malloc(req->content_len + 1,
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!body) {
+        body = malloc(req->content_len + 1);
+    }
     if (!body) {
         return NULL;
     }
@@ -329,7 +341,7 @@ static esp_err_t profiles_get(httpd_req_t *req)
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (n <= 0 || n > 8192) {
+    if (n <= 0 || n > 65536) {
         fclose(f);
         return httpd_resp_sendstr(req, "[]");
     }
@@ -495,12 +507,16 @@ static esp_err_t file_get(httpd_req_t *req)
 
 static esp_err_t settings_post(httpd_req_t *req)
 {
-    if (req->content_len <= 0 || req->content_len > 2048) {
+    if (req->content_len <= 0 || req->content_len > 16384) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad length");
         return ESP_FAIL;
     }
 
-    char *body = malloc(req->content_len + 1);
+    char *body = heap_caps_malloc(req->content_len + 1,
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!body) {
+        body = malloc(req->content_len + 1);
+    }
     if (!body) {
         return ESP_FAIL;
     }

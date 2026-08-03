@@ -10,7 +10,7 @@
 #define SESAME_MAX_CMDS  96
 #define SESAME_MAX_ARGV  16
 
-#define SESAME_MAX_OUT   (16 * 1024)
+#define SESAME_MAX_OUT   (48 * 1024)
 
 typedef struct sesame_out {
     void (*write)(struct sesame_out *o, const char *data, size_t len);

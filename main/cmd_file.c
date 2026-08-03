@@ -110,7 +110,7 @@ static int cmd_tail(int argc, char **argv, sesame_out_t *out)
     if (argc < 2) { sesame_write(out, "usage: tail <path> [lines]\n"); return 1; }
     int want = argc > 2 ? atoi(argv[2]) : 10;
     if (want < 1)  want = 10;
-    if (want > 60) want = 60;
+    if (want > 2000) want = 2000;   // output is capped by SESAME_MAX_OUT anyway
 
     char p[256];
     resolve(argv[1], p, sizeof(p));
@@ -157,14 +157,14 @@ static int cmd_grep(int argc, char **argv, sesame_out_t *out)
         if (strstr(line, argv[1])) {
             hits++;
 
-            if (hits <= 40) {
+            if (hits <= 400) {
                 sesame_printf(out, "%d: %s", lineno, line);
                 if (line[strlen(line)-1] != '\n') sesame_write(out, "\n");
             }
         }
     }
     fclose(f);
-    if (hits > 40) sesame_printf(out, "... %d more matches not shown\n", hits - 40);
+    if (hits > 400) sesame_printf(out, "... %d more matches not shown\n", hits - 400);
     sesame_printf(out, "%d match%s in %d lines\n", hits, hits == 1 ? "" : "es", lineno);
     return 0;
 }
@@ -221,7 +221,7 @@ static int cmd_rmdir(int argc, char **argv, sesame_out_t *out)
 
 static void walk(const char *dir, int depth, sesame_out_t *out, int *files, long *bytes)
 {
-    if (depth > 3) return;
+    if (depth > 12) return;
     DIR *d = opendir(dir);
     if (!d) return;
     struct dirent *e;
@@ -262,7 +262,7 @@ static int cmd_text(int argc, char **argv, sesame_out_t *out)
     }
     long limit = argc > 2 ? atol(argv[2]) : 4000;
     if (limit < 200)   limit = 200;
-    if (limit > 12000) limit = 12000;
+    if (limit > 64000) limit = 64000;
 
     char p[256];
     resolve(argv[1], p, sizeof(p));
