@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 590 267" width="590" height="267" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 708 330" width="708" height="330" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">
   <defs>
     <linearGradient id="pcb" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#20242b"/>
@@ -31,8 +31,8 @@
     </radialGradient>
   </defs>
 
-  <rect width="590" height="267" fill="#0b0d10"/>
-  <g transform="scale(0.5)">
+  <rect width="708" height="330" fill="#0b0d10"/>
+  <g transform="scale(0.6)">
 
   <!-- ── board ──────────────────────────────────────────────── -->
   <g transform="translate(70,60)">
@@ -76,7 +76,7 @@
     </g>
 
     <!-- header labels -->
-    <g fill="#7f8790" font-size="11">
+    <g fill="#7f8790" font-size="17">
       <text x="66"  y="46" text-anchor="middle">3V3</text><text x="111" y="46" text-anchor="middle">EN</text>
       <text x="156" y="46" text-anchor="middle">G4</text><text x="201" y="46" text-anchor="middle">G5</text>
       <text x="246" y="46" text-anchor="middle">G6</text><text x="291" y="46" text-anchor="middle">G7</text>
@@ -88,7 +88,7 @@
       <text x="786" y="46" text-anchor="middle">G12</text><text x="831" y="46" text-anchor="middle">G13</text>
       <text x="876" y="46" text-anchor="middle">G14</text><text x="921" y="46" text-anchor="middle">5V</text>
     </g>
-    <g fill="#7f8790" font-size="11">
+    <g fill="#7f8790" font-size="17">
       <text x="66"  y="243" text-anchor="middle">GND</text><text x="111" y="243" text-anchor="middle">G19</text>
       <text x="156" y="243" text-anchor="middle">G20</text><text x="201" y="243" text-anchor="middle">G21</text>
       <text x="246" y="243" text-anchor="middle">G47</text><text x="291" y="243" text-anchor="middle">G48</text>
@@ -105,19 +105,19 @@
     <g>
       <rect x="-14" y="72" width="44" height="24" rx="11" fill="url(#usb)" stroke="#7d858e"/>
       <rect x="-6"  y="79" width="28" height="10" rx="5" fill="#454b52"/>
-      <text x="46" y="88" fill="#6f7780" font-size="11">OTG</text>
+      <text x="46" y="88" fill="#6f7780" font-size="17">OTG</text>
 
       <rect x="-14" y="168" width="44" height="24" rx="11" fill="url(#usb)" stroke="#7d858e"/>
       <rect x="-6"  y="175" width="28" height="10" rx="5" fill="#454b52"/>
-      <text x="46" y="184" fill="#6f7780" font-size="11">UART</text>
+      <text x="46" y="184" fill="#6f7780" font-size="17">UART</text>
     </g>
 
     <!-- esp32-s3 module -->
     <g transform="translate(120,86)">
       <rect x="0" y="0" width="230" height="112" rx="4" fill="url(#shield)" stroke="#767d86"/>
       <rect x="6" y="6" width="218" height="100" rx="3" fill="none" stroke="#9aa1a9" stroke-width="0.8"/>
-      <text x="115" y="52" text-anchor="middle" fill="#2b3138" font-size="15" font-weight="700">ESP32-S3</text>
-      <text x="115" y="72" text-anchor="middle" fill="#4a525b" font-size="11">16MB · 8MB PSRAM</text>
+      <text x="115" y="52" text-anchor="middle" fill="#2b3138" font-size="23" font-weight="700">ESP32-S3</text>
+      <text x="115" y="72" text-anchor="middle" fill="#4a525b" font-size="17">16MB · 8MB PSRAM</text>
       <!-- antenna -->
       <g transform="translate(232,14)" fill="none" stroke="#c9a227" stroke-width="3">
         <path d="M0 0 h20 v14 h-14 v14 h20 v14 h-14 v14 h20 v14 h-14 v14 h20"/>
@@ -141,8 +141,8 @@
       <rect x="128" y="204" width="24" height="20" rx="3"/>
       <rect x="212" y="204" width="24" height="20" rx="3"/>
     </g>
-    <text x="158" y="219" fill="#6f7780" font-size="10">BOOT</text>
-    <text x="242" y="219" fill="#6f7780" font-size="10">RST</text>
+    <text x="158" y="219" fill="#6f7780" font-size="16">BOOT</text>
+    <text x="242" y="219" fill="#6f7780" font-size="16">RST</text>
 
     <!-- the three LEDs -->
     <g>
@@ -156,34 +156,33 @@
       <rect x="486" y="216" width="12" height="12" rx="2" fill="#35d9a6"/>
     </g>
 
-    <text x="915" y="132" text-anchor="middle" fill="#525960" font-size="13">GOOUUU</text>
-    <text x="915" y="152" text-anchor="middle" fill="#525960" font-size="13">ESP32-S3-CAM</text>
+    <text x="915" y="132" text-anchor="middle" fill="#525960" font-size="20">GOOUUU</text>
+    <text x="915" y="152" text-anchor="middle" fill="#525960" font-size="20">ESP32-S3-CAM</text>
   </g>
 
-  <!-- ── legend, kept clear of the artwork ─────────────────── -->
-  <g font-size="12.5" fill="#8b939c">
+  <!-- ── legend ─────────────────────────────────────────────── -->
+  <g font-size="19" fill="#8b939c">
     <line x1="70" y1="378" x2="1110" y2="378" stroke="#232830"/>
 
-    <g transform="translate(70,410)">
-      <text fill="#cfd6dd" font-size="13">the three lights</text>
-      <text y="24"><tspan fill="#ff5555">■</tspan>  PWR   across 3V3, no GPIO</text>
-      <text y="44"><tspan fill="#5aa9ff">■</tspan>  TX    GPIO43, the UART line</text>
-      <text y="64"><tspan fill="#35d9a6">■</tspan>  RGB   GPIO48, the status light</text>
+    <g transform="translate(70,414)">
+      <text fill="#cfd6dd" font-size="20">the three lights</text>
+      <text y="32"><tspan fill="#ff5555">■</tspan>  PWR  across 3V3, no GPIO</text>
+      <text y="60"><tspan fill="#5aa9ff">■</tspan>  TX   GPIO43, the UART line</text>
+      <text y="88"><tspan fill="#35d9a6">■</tspan>  RGB  GPIO48, the status light</text>
     </g>
 
-    <g transform="translate(430,410)">
-      <text fill="#cfd6dd" font-size="13">camera, OV2640</text>
-      <text y="24">XCLK 15 · SDA 4 · SCL 5</text>
-      <text y="44">VSYNC 6 · HREF 7 · PCLK 13</text>
-      <text y="64">data 16 17 18 12 10 8 9 11</text>
+    <g transform="translate(480,414)">
+      <text fill="#cfd6dd" font-size="20">camera, OV2640</text>
+      <text y="32">XCLK 15 · SDA 4 · SCL 5</text>
+      <text y="60">VSYNC 6 · HREF 7 · PCLK 13</text>
+      <text y="88">data 16 17 18 12 10 8 9 11</text>
     </g>
 
-    <g transform="translate(790,410)">
-      <text fill="#cfd6dd" font-size="13">free for your own use</text>
-      <text y="24" fill="#c9a227">1 · 2 · 14 · 21 · 41 · 42 · 47</text>
-      <text y="52" fill="#6b727b">26-32 are SPI flash and 33-37 are</text>
-      <text y="70" fill="#6b727b">the octal PSRAM bus. Driving either</text>
-      <text y="88" fill="#6b727b">hangs the chip; both are refused.</text>
+    <g transform="translate(830,414)">
+      <text fill="#cfd6dd" font-size="20">free to use</text>
+      <text y="32" fill="#c9a227">1 2 14 21 41 42 47</text>
+      <text y="60" fill="#6b727b">26-32 SPI flash</text>
+      <text y="88" fill="#6b727b">33-37 octal PSRAM</text>
     </g>
   </g>
   </g>
