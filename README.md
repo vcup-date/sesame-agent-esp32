@@ -4,7 +4,7 @@ An AI agent that lives on an ESP32-S3 and controls the hardware it is running on
 
 Ask it in plain language to take a photo, probe an I2C bus, move a servo, record audio, or fetch a web page, and it does the work on the board itself. There is no companion app and no cloud middleman. The only thing it calls out to is the model API you point it at.
 
-<p align="center"><img src="docs/board.svg" alt="the board, its pinout and its three LEDs" width="620"></p>
+<p align="center"><img src="docs/board.svg" alt="the board, its pinout and its three LEDs" width="470"></p>
 
 ## How it works
 
