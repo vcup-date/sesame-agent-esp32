@@ -12,6 +12,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "lwip/apps/netbiosns.h"
 #include "mdns.h"
 #include "nvs_flash.h"
 
@@ -34,6 +35,7 @@ static esp_netif_t *s_ap_netif;
 
 static void start_portal_mode(void);
 static void start_mdns(void);
+static void start_netbios(const char *name);
 
 static void bring_up_services(void *arg)
 {
@@ -43,6 +45,7 @@ static void bring_up_services(void *arg)
     portal_stop();
     web_start();
     start_mdns();
+    start_netbios(cfg_get(CFG_DEV_NAME, "sesame-agent"));
     sshd_start();
 
     vTaskDelete(NULL);
@@ -160,6 +163,25 @@ static void derive_ap_identity(void)
     s_ap_pass[0] = '\0';
 }
 
+// Windows does not resolve .local reliably, and neither do some Android
+// browsers, so the same name is answered over NetBIOS as well. It is an old
+// protocol and costs almost nothing: one UDP socket on port 137 answering a
+// single name. Between mDNS, NetBIOS and the DHCP hostname above, the device
+// is reachable by name from most clients without anyone reading an IP address.
+static void start_netbios(const char *name)
+{
+    static bool started;
+    if (started) {
+        return;
+    }
+    started = true;
+    netbiosns_init();
+    // NetBIOS names are capped at 15 characters. A longer dev.name still works
+    // over mDNS, it just gets truncated here.
+    netbiosns_set_name(name);
+    ESP_LOGI(TAG, "netbios up: http://%s", name);
+}
+
 static void start_mdns(void)
 {
     static bool started;
@@ -221,8 +243,46 @@ static void start_portal_mode(void)
     dns_hijack_start();
     portal_start();
     start_mdns();
+    start_netbios(s_ap_ssid);
 
     ESP_LOGI(TAG, "setup portal up: join '%s' (open network)", s_ap_ssid);
+}
+
+// A fixed address, when net.ip is set. Worth having because every way of
+// reaching this device by name outside mDNS depends on the address holding
+// still: a DNS A record, a bookmark, a firewall rule. DHCP hands out whatever
+// it likes and the lease can move when the device reconnects to another mesh
+// node. Leave net.ip empty for DHCP, which is the default and the right choice
+// for most people.
+static void apply_static_ip(void)
+{
+    const char *ip = cfg_get("net.ip", "");
+    if (!ip[0]) {
+        return;
+    }
+
+    esp_netif_ip_info_t info = { 0 };
+    esp_netif_str_to_ip4(ip, &info.ip);
+    esp_netif_str_to_ip4(cfg_get("net.gw", ""), &info.gw);
+    esp_netif_str_to_ip4(cfg_get("net.mask", "255.255.255.0"), &info.netmask);
+
+    // The DHCP client has to stop first, or it will overwrite this the moment
+    // the lease arrives.
+    esp_netif_dhcpc_stop(s_sta_netif);
+    if (esp_netif_set_ip_info(s_sta_netif, &info) != ESP_OK) {
+        ESP_LOGE(TAG, "static ip %s rejected; falling back to DHCP", ip);
+        esp_netif_dhcpc_start(s_sta_netif);
+        return;
+    }
+
+    // Without DHCP there is no DNS server either, so resolution would break
+    // and the agent could not reach its API. The gateway is the safe guess.
+    esp_netif_dns_info_t dns = { 0 };
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
+    dns.ip.u_addr.ip4.addr = info.gw.addr;
+    esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_MAIN, &dns);
+
+    ESP_LOGI(TAG, "static ip %s gw %s", ip, cfg_get("net.gw", ""));
 }
 
 static void start_station_mode(void)
@@ -233,6 +293,7 @@ static void start_station_mode(void)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta));
+    apply_static_ip();
     ESP_ERROR_CHECK(esp_wifi_start());
 
     s_state = NET_CONNECTING;
@@ -247,6 +308,15 @@ esp_err_t net_start(void)
 
     s_sta_netif = esp_netif_create_default_wifi_sta();
     s_ap_netif  = esp_netif_create_default_wifi_ap();
+
+    // Claim the name in the DHCP request (option 12), before the interface is
+    // ever brought up, because the hostname is only sent when the lease is
+    // taken. Most home routers put that name into their own DNS, which is what
+    // makes http://sesame-xxxx reachable with no .local suffix and no IP. It
+    // depends on the router, so it is a bonus path rather than the main one.
+    const char *host = cfg_get(CFG_DEV_NAME, "sesame-agent");
+    esp_netif_set_hostname(s_sta_netif, host);
+    esp_netif_set_hostname(s_ap_netif, host);
 
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&init));
@@ -369,7 +439,11 @@ static int cmd_wifi(int argc, char **argv, sesame_out_t *out)
         sesame_printf(out, "ip      %s\n", ip);
         if (s_state == NET_ONLINE) {
             sesame_printf(out, "rssi    %d dBm\n", net_rssi());
-            sesame_printf(out, "mdns    http://%s.local\n", cfg_get(CFG_DEV_NAME, "sesame-agent"));
+            sesame_printf(out, "names   http://%s.local  (mDNS: Apple, Linux, Windows 10+)\n",
+                          cfg_get(CFG_DEV_NAME, "sesame-agent"));
+            sesame_printf(out, "        http://%s        (NetBIOS, and DHCP-registered on\n"
+                               "                              routers that publish lease names)\n",
+                          cfg_get(CFG_DEV_NAME, "sesame-agent"));
             if (s_bssid_pinned) {
                 sesame_printf(out, "ap      pinned to %02x:%02x:%02x:%02x:%02x:%02x "
                                    "(won't roam between mesh nodes unless it drops %d times)\n",
@@ -396,6 +470,26 @@ static int cmd_wifi(int argc, char **argv, sesame_out_t *out)
         return err == ESP_OK ? 0 : 1;
     }
 
+    if (strcmp(argv[1], "static") == 0) {
+        if (argc < 4) {
+            sesame_write(out, "usage: wifi static <ip> <gateway> [mask]\n"
+                              "       wifi dhcp        (back to automatic)\n");
+            return 1;
+        }
+        cfg_set("net.ip", argv[2]);
+        cfg_set("net.gw", argv[3]);
+        cfg_set("net.mask", argc > 4 ? argv[4] : "255.255.255.0");
+        sesame_printf(out, "static %s via %s (reboot to apply)\n", argv[2], argv[3]);
+        return 0;
+    }
+
+    if (strcmp(argv[1], "dhcp") == 0) {
+        cfg_erase("net.ip");
+        cfg_erase("net.gw");
+        sesame_write(out, "back to DHCP (reboot to apply)\n");
+        return 0;
+    }
+
     if (strcmp(argv[1], "forget") == 0) {
         cfg_erase(CFG_WIFI_SSID);
         cfg_erase(CFG_WIFI_PASS);
@@ -403,12 +497,12 @@ static int cmd_wifi(int argc, char **argv, sesame_out_t *out)
         return 0;
     }
 
-    sesame_write(out, "usage: wifi [status|scan|connect <ssid> [pass]|forget]\n");
+    sesame_write(out, "usage: wifi [status|scan|connect <ssid> [pass]|static <ip> <gw>|dhcp|forget]\n");
     return 1;
 }
 
 static const sesame_cmd_t CMDS[] = {
-    { "wifi", "wifi [status|scan|connect <ssid> [pass]|forget]",
+    { "wifi", "wifi [status|scan|connect <ssid> [pass]|static <ip> <gw>|dhcp|forget]",
       "network status and joining", cmd_wifi },
 };
 

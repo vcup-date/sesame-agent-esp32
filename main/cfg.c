@@ -29,6 +29,9 @@ static struct {
     { CFG_LED_PIN,   "48"                       },
     { CFG_LED_INV,   "0"                        },
     { "cam.pins",    ""                         },
+    { "net.ip",      ""                         },
+    { "net.gw",      ""                         },
+    { "net.mask",    "255.255.255.0"            },
 };
 
 static const int CFG_N = sizeof(s_cfg) / sizeof(s_cfg[0]);
