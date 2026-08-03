@@ -188,6 +188,10 @@ will not do anything useful on the right of a pipe.
 `write` and `python` are exempt, because they take the rest of the line
 verbatim. A `>` inside a file body or a `|` inside Python source stays literal.
 
+A pipeline is capped at six stages, and `>` only works at the very end. Putting
+it earlier is refused rather than quietly ignored, and a target that cannot be
+written reports the failure instead of claiming success.
+
 ### Hardware
 
 Pin numbers are GPIO numbers. `pins` prints which are free.

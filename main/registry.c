@@ -304,49 +304,83 @@ static bool is_raw_command(const char *line)
     return c && c->raw;
 }
 
-static void write_all(const char *path, const char *text, bool append)
+static bool write_all(const char *path, const char *text, bool append)
 {
     FILE *f = fopen(path, append ? "ab" : "wb");
-    if (!f) return;
-    if (text) fwrite(text, 1, strlen(text), f);
+    if (!f) {
+        return false;
+    }
+    size_t n = text ? strlen(text) : 0;
+    bool ok = (n == 0) || fwrite(text, 1, n, f) == n;
     fclose(f);
+    return ok;
 }
 
 // One pipeline: a | b | c, with an optional > or >> on the end.
+#define MAX_STAGES 6
+
 static int exec_pipeline(char *seg, sesame_out_t *out)
 {
-    char *redir = find_op(seg, ">>");
+    // Split the pipeline FIRST. Looking for a redirect across the whole line
+    // meant `a > f | b` captured "f | b" as the filename and created a file
+    // with a pipe in its name, so the redirect is only meaningful on the last
+    // stage and is looked for there.
+    char *stage[MAX_STAGES];
+    int nstage = 0;
+    stage[nstage++] = seg;
+    char *bar;
+    while ((bar = find_op(stage[nstage - 1], "|")) != NULL) {
+        if (nstage >= MAX_STAGES) {
+            sesame_printf(out, "at most %d pipeline stages\n", MAX_STAGES);
+            return -1;
+        }
+        *bar = '\0';
+        stage[nstage++] = bar + 1;
+    }
+
+    // A redirect anywhere but the end would otherwise be swallowed into that
+    // stage's arguments and silently do nothing, which is worse than refusing.
+    for (int i = 0; i < nstage - 1; i++) {
+        if (find_op(stage[i], ">")) {
+            sesame_write(out, "> only works at the end of a pipeline\n");
+            return -1;
+        }
+    }
+
+    char *last = stage[nstage - 1];
+    char *redir = find_op(last, ">>");
     bool append = redir != NULL;
-    if (!redir) redir = find_op(seg, ">");
+    if (!redir) {
+        redir = find_op(last, ">");
+    }
 
     char *target = NULL;
     if (redir) {
         *redir = '\0';
         target = redir + (append ? 2 : 1);
-        while (*target == ' ' || *target == '\t') target++;
+        while (*target == ' ' || *target == '\t') {
+            target++;
+        }
+        // Trim trailing space so `a > f ` does not create a file named "f ".
+        char *end = target + strlen(target);
+        while (end > target && (end[-1] == ' ' || end[-1] == '\t')) {
+            *--end = '\0';
+        }
         if (!*target) {
-            sesame_write(out, "expected a file after > \n");
+            sesame_write(out, "expected a file after >\n");
             return -1;
         }
     }
 
-    // split the stages
-    char *stage[6];
-    int nstage = 0;
-    stage[nstage++] = seg;
-    char *bar;
-    while (nstage < 6 && (bar = find_op(stage[nstage - 1], "|")) != NULL) {
-        *bar = '\0';
-        stage[nstage++] = bar + 1;
-    }
-
     int rc = 0;
-    const char *carry = NULL;   // temp file holding the previous stage's output
-    int slot = 0;               // alternates so a stage never reads the file it writes
+    const char *carry = NULL;
+    int slot = 0;
 
     for (int i = 0; i < nstage; i++) {
         char *cmd = stage[i];
-        while (*cmd == ' ' || *cmd == '\t') cmd++;
+        while (*cmd == ' ' || *cmd == '\t') {
+            cmd++;
+        }
         if (!*cmd) {
             sesame_write(out, "empty pipeline stage\n");
             return -1;
@@ -354,32 +388,43 @@ static int exec_pipeline(char *seg, sesame_out_t *out)
 
         char joined[512];
         if (carry) {
+            if ((int)(strlen(cmd) + strlen(carry) + 2) > (int)sizeof(joined)) {
+                sesame_write(out, "pipeline stage too long\n");
+                return -1;
+            }
             snprintf(joined, sizeof(joined), "%s %s", cmd, carry);
             cmd = joined;
         }
 
-        bool last = (i == nstage - 1);
-        if (last && !target) {
-            rc = exec_one(cmd, out);       // straight to the caller's sink
+        bool is_last = (i == nstage - 1);
+        if (is_last && !target) {
+            rc = exec_one(cmd, out);
         } else {
             int r = 0;
             char *captured = sesame_capture(cmd, &r);
             rc = r;
             const char *next = slot ? PIPE_B : PIPE_A;
             slot = !slot;
-            if (last) {
-                write_all(target, captured, append);
-                sesame_printf(out, "%u bytes %s %s\n",
-                              (unsigned)(captured ? strlen(captured) : 0),
-                              append ? "appended to" : "written to", target);
-            } else {
-                write_all(next, captured, false);
+            if (is_last) {
+                size_t n = captured ? strlen(captured) : 0;
+                if (write_all(target, captured, append)) {
+                    sesame_printf(out, "%u bytes %s %s\n", (unsigned)n,
+                                  append ? "appended to" : "written to", target);
+                } else {
+                    sesame_printf(out, "cannot write %s\n", target);
+                    rc = -1;
+                }
+            } else if (!write_all(next, captured, false)) {
+                sesame_write(out, "cannot buffer the pipeline\n");
+                free(captured);
+                rc = -1;
+                break;
             }
             free(captured);
             carry = next;
         }
-        if (rc != 0 && !last) {
-            break;   // a failed stage has nothing useful to hand on
+        if (rc != 0 && !is_last) {
+            break;
         }
     }
 
