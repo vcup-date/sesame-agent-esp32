@@ -73,7 +73,7 @@ void sesame_banner(sesame_out_t *out, const char *version)
         "        ██ ██           ██ ██   ██ ██  ██  ██ ██     \n"
         "   ███████ ███████ ███████ ██   ██ ██      ██ ███████\n"
         "\n"
-        "        ( ) an agent that lives on the board\n");
+        "        an agent that lives on the board\n");
     sesame_printf(out, "            %s\n\n", version ? version : "");
 }
 

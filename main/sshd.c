@@ -1,6 +1,7 @@
 #include "cfg.h"
 #include "net.h"
 #include "agent.h"
+#include "py.h"
 #include "sesame.h"
 
 #include <string.h>
@@ -205,6 +206,9 @@ static void session(int sock)
     // command table, which is what makes SSH a usable way to actually work
     // with the agent rather than only to poke at the device.
     bool repl = false;
+    bool pyrepl = false;
+    char pybuf[1024];
+    int  pylen = 0;
     char agent_prompt[64];
     snprintf(agent_prompt, sizeof(agent_prompt), "%s ask> ",
              cfg_get(CFG_DEV_NAME, "sesame"));
@@ -224,6 +228,13 @@ static void session(int sock)
             line[len] = '\0';
 
             if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
+                if (pyrepl && pylen == 0) {
+                    pyrepl = false;
+                    ssh_say(&out, "left python\r\n");
+                    len = 0;
+                    ssh_say(&out, prompt);
+                    continue;
+                }
                 if (repl) {
                     repl = false;
                     ssh_say(&out, "left conversation mode\r\n");
@@ -234,7 +245,31 @@ static void session(int sock)
                 ssh_say(&out, "bye\r\n");
                 break;
             }
-            if (len > 0) {
+            if (pyrepl) {
+                if (pylen == 0 && (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0
+                                   || strcmp(line, "exit()") == 0)) {
+                    pyrepl = false;
+                    ssh_say(&out, "left python\r\n");
+                } else if (line[0] == '\0') {
+                    if (pylen) {
+                        py_run_interactive(pybuf, &crlf);
+                        pylen = 0; pybuf[0] = '\0';
+                    }
+                } else {
+                    int n = strlen(line);
+                    if (pylen + n + 2 < (int)sizeof(pybuf)) {
+                        memcpy(pybuf + pylen, line, n);
+                        pylen += n;
+                        pybuf[pylen++] = '\n';
+                        pybuf[pylen] = '\0';
+                    }
+                    bool cont = (n && line[n-1] == ':') || line[0] == ' ' || line[0] == '\t';
+                    if (!cont) {
+                        py_run_interactive(pybuf, &crlf);
+                        pylen = 0; pybuf[0] = '\0';
+                    }
+                }
+            } else if (len > 0) {
                 if (repl) {
                     agent_ask(line, &crlf);
                 } else {
@@ -244,11 +279,15 @@ static void session(int sock)
                         repl = true;
                         ssh_say(&out, "conversation mode. ask in plain language; "
                                       "'exit' returns to the shell.\r\n");
+                    } else if (py_take_repl_request()) {
+                        pyrepl = true; pylen = 0; pybuf[0] = '\0';
+                        ssh_say(&out, "'exit' returns to the shell.\r\n");
                     }
                 }
             }
             len = 0;
-            ssh_say(&out, repl ? agent_prompt : prompt);
+            ssh_say(&out, pyrepl ? (pylen ? "... " : ">>> ")
+                                 : (repl ? agent_prompt : prompt));
             continue;
         }
 

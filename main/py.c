@@ -167,11 +167,96 @@ int py_run(const char *src, sesame_out_t *out)
     return rc;
 }
 
+static bool s_repl_wanted;
+
+// A REPL echoes the value of an expression; a script does not. MicroPython's
+// embed entry point only execs, so an expression typed at the prompt would
+// evaluate and silently discard its result, which is exactly the thing an
+// interactive session is for.
+//
+// So: if the line looks like an expression rather than a statement, bind it and
+// print its repr, skipping None the way the real interpreter does. The test is
+// a heuristic, but it errs toward running the line unchanged, and a statement
+// wrongly treated as an expression would simply be a syntax error the user can
+// see rather than a wrong answer they cannot.
+static bool looks_like_expression(const char *line)
+{
+    static const char *stmt[] = {
+        "import ", "from ", "def ", "class ", "for ", "while ", "if ", "elif ",
+        "else", "try", "except", "finally", "with ", "return", "pass", "break",
+        "continue", "del ", "global ", "nonlocal ", "raise", "assert ", "print(",
+        "yield", "@", NULL
+    };
+    while (*line == ' ' || *line == '\t') {
+        return false;   // indented: part of a block, never a bare expression
+    }
+    for (int i = 0; stmt[i]; i++) {
+        if (strncmp(line, stmt[i], strlen(stmt[i])) == 0) {
+            return false;
+        }
+    }
+    // An assignment is a statement. Skip ==, !=, <=, >= and anything inside
+    // brackets or quotes so `d["k"] == 1` is still seen as an expression.
+    int depth = 0;
+    char quote = 0;
+    for (const char *p = line; *p; p++) {
+        if (quote) {
+            if (*p == quote) quote = 0;
+            continue;
+        }
+        if (*p == '\'' || *p == '"') { quote = *p; continue; }
+        if (*p == '(' || *p == '[' || *p == '{') depth++;
+        if (*p == ')' || *p == ']' || *p == '}') depth--;
+        if (depth == 0 && *p == '=') {
+            char prev = p > line ? p[-1] : 0;
+            if (prev != '=' && prev != '!' && prev != '<' && prev != '>' && p[1] != '=') {
+                return false;
+            }
+        }
+    }
+    return line[0] != '\0';
+}
+
+int py_run_interactive(const char *src, sesame_out_t *out)
+{
+    // Multi-line blocks are always statements.
+    if (strchr(src, '\n') && strchr(src, '\n') != src + strlen(src) - 1) {
+        return py_run(src, out);
+    }
+    char line[512];
+    strlcpy(line, src, sizeof(line));
+    char *nl = strchr(line, '\n');
+    if (nl) *nl = '\0';
+
+    if (!looks_like_expression(line)) {
+        return py_run(src, out);
+    }
+    char wrapped[640];
+    snprintf(wrapped, sizeof(wrapped),
+             "_r = (%s)\nif _r is not None:\n    print(repr(_r))\n", line);
+    return py_run(wrapped, out);
+}
+
+bool py_take_repl_request(void)
+{
+    bool w = s_repl_wanted;
+    s_repl_wanted = false;
+    return w;
+}
+
 static int cmd_py(int argc, char **argv, sesame_out_t *out)
 {
     if (argc < 2) {
-        sesame_write(out, "usage: py <code>   (or: py -f <path> to run a file)\n");
-        return 1;
+        // Bare `python` asks the shell for an interactive session, exactly as
+        // the real interpreter behaves. The command cannot read the next line
+        // itself; that belongs to whichever shell is running.
+        // Reads as a greeting in an interactive shell and as help everywhere
+        // else, which matters because the HTTP endpoint cannot open a session.
+        s_repl_wanted = true;
+        sesame_write(out, "MicroPython on ESP32-S3. Computation only: no files, "
+                          "no hardware.\n"
+                          "Non-interactive use: python <code>, or python -f <path>\n");
+        return 0;
     }
 
     if (strncmp(argv[1], "-f ", 3) == 0) {
@@ -217,8 +302,10 @@ static int cmd_py(int argc, char **argv, sesame_out_t *out)
 }
 
 static const sesame_cmd_t CMDS[] = {
-    { "py", "py <code> | py -f <path>",
-      "run Python on the device (print() comes back here)", cmd_py, true },
+    { "python", "python [code] | python -f <path>",
+      "MicroPython; bare `python` opens an interactive session", cmd_py, true },
+    { "py",     "py [code]",
+      "short for python", cmd_py, true },
 };
 
 void cmd_py_register(void)

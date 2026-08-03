@@ -37,7 +37,7 @@ static int cmd_ls(int argc, char **argv, sesame_out_t *out)
         return 1;
     }
 
-    int files = 0;
+    int files = 0, dirs = 0;
     long total = 0;
     struct dirent *e;
     while ((e = readdir(d)) != NULL) {
@@ -46,19 +46,34 @@ static int cmd_ls(int argc, char **argv, sesame_out_t *out)
 
         struct stat st;
         if (stat(full, &st) != 0) {
-            sesame_printf(out, "%-28s ?\n", e->d_name);
+            sesame_printf(out, "?              ?  %s\n", e->d_name);
             continue;
         }
         if (S_ISDIR(st.st_mode)) {
-            sesame_printf(out, "%-28s   dir\n", e->d_name);
-        } else {
-            sesame_printf(out, "%-28s %5ld\n", e->d_name, (long)st.st_size);
-            total += st.st_size;
-            files++;
+            sesame_printf(out, "d          %6s  %s/\n", "-", e->d_name);
+            dirs++;
+            continue;
         }
+        // Sizes in bytes up to 10k, then KB. A photo reported as 41233 tells
+        // you less at a glance than 40.3K does.
+        char size[16];
+        if (st.st_size < 10000) {
+            snprintf(size, sizeof(size), "%lld", (long long)st.st_size);
+        } else {
+            snprintf(size, sizeof(size), "%.1fK", st.st_size / 1024.0);
+        }
+        sesame_printf(out, "-          %6s  %s\n", size, e->d_name);
+        total += st.st_size;
+        files++;
     }
     closedir(d);
-    sesame_printf(out, "%d file%s, %ld bytes\n", files, files == 1 ? "" : "s", total);
+    if (total < 10000) {
+        sesame_printf(out, "\n%d file%s, %d dir%s, %ld bytes\n",
+                      files, files == 1 ? "" : "s", dirs, dirs == 1 ? "" : "s", total);
+    } else {
+        sesame_printf(out, "\n%d file%s, %d dir%s, %.1f KB\n",
+                      files, files == 1 ? "" : "s", dirs, dirs == 1 ? "" : "s", total / 1024.0);
+    }
     return 0;
 }
 

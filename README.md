@@ -120,7 +120,7 @@ Reachable four ways: serial console, SSH, `POST /api/exec`, and the agent's `she
 
 | | |
 |---|---|
-| `ls [dir]` | list a directory |
+| `ls [dir]` | long listing: type, size, name |
 | `cat <file>` | print a file |
 | `write <file> <text>` | write text, newlines and indentation kept as sent |
 | `cp <src> <dst>` | copy, byte exact, binary safe |
@@ -156,7 +156,8 @@ Reachable four ways: serial console, SSH, `POST /api/exec`, and the agent's `she
 | `cron add [-g] [-k] <secs\|once> <cmd>` | schedule; `-g` survives reboot, `-k` never expires |
 | `cron list\|del <id\|all>\|pause\|resume` | manage jobs |
 | `skill list\|show <name>\|rm <name>` | saved procedures, read on demand |
-| `py <code>` · `py -f <file>` | MicroPython, computation only |
+| `python` | interactive session, `>>>` and `...`, `exit` leaves |
+| `python <code>` · `python -f <file>` | run without entering a session (`py` is a short alias) |
 | `cfg [list\|get\|set]` · `passwd <pw> [user]` | settings; change the SSH password |
 | `ssh` · `sysinfo` · `uptime` · `reboot` · `help [cmd]` | |
 
@@ -320,7 +321,7 @@ The MicroPython embed package under `components/micropython/micropython_embed` i
 
 The shell is not bash. There are no pipes, no redirection, no globbing and no `&&`. `grep <pattern> <file>` rather than `cat file | grep pattern`. `seq` covers the common case of several steps with timing in one call, but it is a list, not a language: no variables, no conditions, no loops beyond `xN`.
 
-MicroPython here is pure computation. There is no `machine` module, no file access, and no pin access from Python. Anything touching hardware has to be a C command, which is why the command list is as long as it is.
+MicroPython here is pure computation. `python` opens a real interactive session with `>>>` and `...` prompts, expression echo and persistent state, but there is no `machine` module, no file access and no pin access from it. Anything touching hardware has to be a C command, which is why the command list is as long as it is.
 
 `peer` messages are not encrypted and not signed. Anything in radio range can read them, and a name inside a packet is a claim rather than proof.
 

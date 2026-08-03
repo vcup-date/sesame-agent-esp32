@@ -1,4 +1,5 @@
 #include "agent.h"
+#include "py.h"
 #include "sesame.h"
 #include "cfg.h"
 
@@ -59,12 +60,20 @@ static void console_task(void *arg)
     // leaves it, and in between every line goes to the model rather than the
     // command table.
     bool repl = false;
+    bool pyrepl = false;
+    // A block (def, for, if ...) is only complete once a blank line follows,
+    // which is how the real interpreter decides too.
+    char pybuf[1024];
+    int  pylen = 0;
     char agent_prompt[64];
     snprintf(agent_prompt, sizeof(agent_prompt), "%s ask> ",
              cfg_get(CFG_DEV_NAME, "sesame"));
 
     while (1) {
-        char *line = linenoise(repl ? agent_prompt : prompt);
+        const char *use = prompt;
+        if (repl)        use = agent_prompt;
+        else if (pyrepl) use = pylen ? "... " : ">>> ";
+        char *line = linenoise(use);
         if (line == NULL) {
 
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -72,7 +81,33 @@ static void console_task(void *arg)
         }
         if (line[0] != '\0') {
             linenoiseHistoryAdd(line);
-            if (repl) {
+            if (pyrepl) {
+                if (pylen == 0 && (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0
+                                   || strcmp(line, "exit()") == 0)) {
+                    pyrepl = false;
+                    printf("left python\n");
+                } else if (line[0] == '\0') {
+                    if (pylen) {
+                        py_run_interactive(pybuf, sesame_stdout());
+                        pylen = 0; pybuf[0] = '\0';
+                    }
+                } else {
+                    int n = strlen(line);
+                    if (pylen + n + 2 < (int)sizeof(pybuf)) {
+                        memcpy(pybuf + pylen, line, n);
+                        pylen += n;
+                        pybuf[pylen++] = '\n';
+                        pybuf[pylen] = '\0';
+                    }
+                    // A line that opens a block, or one that is indented, means
+                    // more is coming; anything else runs straight away.
+                    bool cont = (n && line[n-1] == ':') || line[0] == ' ' || line[0] == '\t';
+                    if (!cont) {
+                        py_run_interactive(pybuf, sesame_stdout());
+                        pylen = 0; pybuf[0] = '\0';
+                    }
+                }
+            } else if (repl) {
                 if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
                     repl = false;
                     printf("left conversation mode\n");
@@ -86,6 +121,9 @@ static void console_task(void *arg)
                     repl = true;
                     printf("conversation mode. ask in plain language; "
                            "'exit' returns to the shell.\n");
+                } else if (py_take_repl_request()) {
+                    pyrepl = true; pylen = 0; pybuf[0] = '\0';
+                    printf("'exit' returns to the shell.\n");
                 }
             }
         }
