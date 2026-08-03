@@ -189,7 +189,97 @@ static int cmd_cfg(int argc, char **argv, sesame_out_t *out)
     return 1;
 }
 
+static int cmd_wait(int argc, char **argv, sesame_out_t *out)
+{
+    int ms = argc > 1 ? atoi(argv[1]) : 100;
+    if (ms < 1)     ms = 1;
+    if (ms > 10000) ms = 10000;
+    vTaskDelay(pdMS_TO_TICKS(ms));
+    (void)out;
+    return 0;
+}
+
+// Run several commands, and any waits between them, in ONE call.
+//
+// Without this a timed sequence costs one model round trip per step. Flashing
+// three colours meant three API calls and several seconds of dead air between
+// each, which does not look like a flash at all. `seq` collapses the whole
+// sequence into a single tool call, so the timing is the device's rather than
+// the network's.
+//
+//   seq rgb 255 0 0; wait 150; rgb 0 255 0; wait 150; rgb 0 0 255
+//   seq x5 rgb 0 0 255; wait 100; rgb off; wait 100
+static int cmd_seq(int argc, char **argv, sesame_out_t *out)
+{
+    if (argc < 2) {
+        sesame_write(out,
+            "usage: seq [xN] <command>; <command>; ...\n"
+            "Runs the whole list in one call, so timing is not at the mercy of\n"
+            "a round trip. Use `wait <ms>` between steps. xN repeats the list.\n"
+            "example: seq x3 rgb 255 0 0; wait 150; rgb 0 0 255; wait 150\n");
+        return 1;
+    }
+
+    // seq is a raw command: argv[1] is the whole rest of the line.
+    const char *body = argv[1];
+
+    int repeat = 1;
+    if (body[0] == 'x' && body[1] >= '0' && body[1] <= '9') {
+        repeat = atoi(body + 1);
+        const char *sp = strchr(body, ' ');
+        body = sp ? sp + 1 : "";
+        if (repeat < 1)  repeat = 1;
+        if (repeat > 50) repeat = 50;
+    }
+
+    // Guard against a command list that runs away with the console: this
+    // blocks the caller, and an agent tool call, for its whole duration.
+    static bool running;
+    if (running) {
+        sesame_write(out, "seq: cannot nest\n");
+        return 1;
+    }
+    running = true;
+
+    int64_t started = esp_timer_get_time();
+    int steps = 0;
+
+    for (int r = 0; r < repeat; r++) {
+        char *copy = strdup(body);
+        if (!copy) {
+            running = false;
+            return 1;
+        }
+        char *save = NULL;
+        for (char *part = strtok_r(copy, ";", &save); part; part = strtok_r(NULL, ";", &save)) {
+            while (*part == ' ') {
+                part++;
+            }
+            if (!*part) {
+                continue;
+            }
+            sesame_exec(part, out);
+            steps++;
+            if (esp_timer_get_time() - started > 25000000) {   // 25s ceiling
+                sesame_printf(out, "seq: stopped after %d steps (time limit)\n", steps);
+                free(copy);
+                running = false;
+                return 1;
+            }
+        }
+        free(copy);
+    }
+
+    running = false;
+    sesame_printf(out, "seq: %d step%s in %lld ms\n", steps, steps == 1 ? "" : "s",
+                  (esp_timer_get_time() - started) / 1000);
+    return 0;
+}
+
 static const sesame_cmd_t CMDS[] = {
+    { "seq",     "seq [xN] <cmd>; <cmd>; ...",
+      "run several commands with timing in ONE call", cmd_seq, true },
+    { "wait",    "wait <ms>",             "pause, for use inside seq",           cmd_wait },
     { "help",    "help [command]",        "list commands, or explain one",       cmd_help },
     { "sysinfo", "sysinfo",               "firmware, chip, uptime and memory",   cmd_sysinfo },
     { "free",    "free",                  "free heap in SRAM and PSRAM",         cmd_free },

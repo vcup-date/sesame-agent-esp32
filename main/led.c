@@ -9,6 +9,7 @@
 #include "driver/ledc.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "led_strip.h"
 
@@ -28,6 +29,11 @@ static bool s_ready;
 static bool s_addressable;
 static int  s_transient_ms;
 static led_strip_handle_t s_strip;
+// The animation task and any command that sets a colour both drive the same
+// RMT channel. Without this they can overlap mid-transmission and the driver
+// rejects the second one with "channel not in init state", which showed up as
+// dropped colours in the middle of a sequence.
+static SemaphoreHandle_t s_strip_lock;
 static uint8_t s_manual[3];
 
 static bool strip_open(int pin)
@@ -68,8 +74,14 @@ static void write_level(int duty, int r, int g, int b)
         if (!s_strip) {
             return;
         }
+        if (s_strip_lock && xSemaphoreTake(s_strip_lock, pdMS_TO_TICKS(50)) != pdTRUE) {
+            return;   // someone else is mid-refresh; a dropped frame is fine
+        }
         led_strip_set_pixel(s_strip, 0, r * duty / 255, g * duty / 255, b * duty / 255);
         led_strip_refresh(s_strip);
+        if (s_strip_lock) {
+            xSemaphoreGive(s_strip_lock);
+        }
         return;
     }
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LED_CHANNEL, s_inv ? 255 - duty : duty);
@@ -160,7 +172,8 @@ static void led_task(void *arg)
         }
 
         case LED_MANUAL:
-            write_level(255, s_manual[0], s_manual[1], s_manual[2]);
+            // Already written by led_rgb, and it does not change. Re-sending it
+            // every tick only competes with whoever sets the next colour.
             break;
         }
     }
@@ -176,6 +189,10 @@ void led_init(void)
     if (s_pin < 0) {
         ESP_LOGI(TAG, "status LED disabled (led.pin = -1)");
         return;
+    }
+
+    if (!s_strip_lock) {
+        s_strip_lock = xSemaphoreCreateMutex();
     }
 
     if (s_addressable) {

@@ -32,6 +32,8 @@ static struct {
     { "net.ip",      ""                         },
     { "net.gw",      ""                         },
     { "net.mask",    "255.255.255.0"            },
+    { "agent.hops",  "64"                       },
+    { "agent.ctx",   "49152"                    },
 };
 
 static const int CFG_N = sizeof(s_cfg) / sizeof(s_cfg[0]);

@@ -19,11 +19,37 @@
 
 static const char *TAG = "agent";
 
-#define MAX_HOPS      12
+// How many model round trips one request may take. This was 12, which was far
+// too mean: a physical task is naturally many small steps, and asking the LED
+// to walk through a colour sweep one command at a time hit the ceiling and had
+// the turn killed mid-way. The limit exists only to stop a model looping
+// forever, so it belongs well above anything a real task needs, and it is
+// configurable for the cases that need more.
+#define DEFAULT_HOPS  64
+
+static int max_hops(void)
+{
+    int h = atoi(cfg_get("agent.hops", "64"));
+    if (h < 1)   h = 1;
+    if (h > 500) h = 500;
+    return h;
+}
 
 #define MAX_RESPONSE  (96 * 1024)
 
-#define MAX_CONTEXT   (48 * 1024)
+// When the conversation passes this, the oldest half is summarised rather than
+// discarded. Configurable: the model's own window is far larger than this, and
+// the real cost here is that every hop re-uploads the whole conversation over
+// WiFi, so the right value depends on how good your link is.
+#define DEFAULT_CONTEXT (48 * 1024)
+
+static int max_context(void)
+{
+    int c = atoi(cfg_get("agent.ctx", "49152"));
+    if (c < 4096)     c = 4096;
+    if (c > 512*1024) c = 512*1024;
+    return c;
+}
 
 static cJSON            *s_messages;
 static SemaphoreHandle_t s_lock;
@@ -87,37 +113,28 @@ static char *build_system_prompt(void)
         pappend(&b, "  %-44s %s\n", c->usage, c->help);
     }
 
+    // Facts only. Everything here is something that cannot be worked out from
+    // the command table: a quirk of the parser, a capability that is missing,
+    // or how the hardware is wired. Style, tone, brevity and language are the
+    // model's own business and it does them better unprompted.
     pappend(&b,
-        "\nThere is no shell beyond this table: no pipes, no globbing, no "
-        "programs. One command per call, exactly as spelled above.\n\n"
-        "Reply in whatever language the user writes to you in. Command names "
-        "and device output stay as they are; only your own prose changes.\n\n"
-        "When a task needs logic that no single command expresses — a loop, a "
-        "calculation, a sequence with timing — write Python and run it with "
-        "`py`. It is a real MicroPython interpreter on this chip. For anything "
-        "longer than a line or two, `write` the script to a file first and then "
-        "run `py -f <path>`, so it is saved and can be re-run.\n\n"
-        "`write` and `py` take the whole rest of the line, newlines and quotes "
-        "included, exactly as you send them — so send real multi-line text and "
-        "do not try to escape it.\n\n"
-        "Python here has no filesystem: there is no `open()`, no `os`, no "
-        "`import` of anything you write. Use `write`, `cat` and `ls` for files "
-        "and keep Python for computation. `time` is available.\n\n"
-        "Python also has NO hardware access. There is no `machine`, no "
-        "`neopixel`, no pin or bus objects, and importing them will fail. Every "
-        "hardware action is a command in the table above, so reach for the "
-        "command rather than testing whether a Python module exists.\n\n"
-        "You do control the light: `rgb r g b` sets the colour LED and `led "
-        "off|idle|think` drives the status animation. The board's red LED is "
-        "wired straight to the power rail with no GPIO, and the blue one is the "
-        "UART transmit line, so neither can be switched. Say so plainly rather "
-        "than reporting that you have no access to the LEDs.\n\n"
-        "Take photos with `snap`, which writes a JPEG and reports its path and "
-        "size. You cannot see the image; describe what you did, not what is in "
-        "the picture, unless the user tells you.\n\n"
-        "Be brief. You are read on a serial terminal and a phone screen. When a "
-        "command fails, say what failed and what you will try instead, rather "
-        "than repeating the same call.");
+        "\nHow the tool behaves:\n\n"
+        "- No shell syntax: no pipes, redirection, globbing or &&. One command "
+        "per call, spelled as above.\n"
+        "- Each call is a network round trip. `seq` runs a whole list in one "
+        "call: `seq rgb 255 0 0; wait 150; rgb 0 255 0; wait 150`, and "
+        "`seq xN <list>` repeats it. Timing inside `seq` is the device's.\n"
+        "- `write` and `py` take the rest of the line verbatim, newlines and "
+        "quotes included, so send real multi-line text rather than escaping it.\n"
+        "- `py` is MicroPython for computation only. No `open()`, no `os`, no "
+        "importing your own files, and no hardware access at all: `machine` and "
+        "`neopixel` do not exist. `time` does. Hardware is reached only through "
+        "the commands above.\n"
+        "- `snap` writes a JPEG and reports its path. The image itself is not "
+        "returned to you.\n"
+        "- The colour LED is `rgb` and `led` on GPIO48. The red LED is wired "
+        "across the power rail with no GPIO, and the blue one is the UART "
+        "transmit line, so neither can be switched.\n");
 
     return b.buf;
 }
@@ -284,9 +301,116 @@ static int context_chars(void)
 
 int agent_context_chars(void) { return context_chars(); }
 
+// Ask the model to summarise the oldest part of the conversation, and put that
+// summary back in place of it.
+//
+// The previous behaviour simply deleted the oldest messages, which is why a
+// long session would suddenly forget what it had been doing: the earlier work
+// was not condensed, it was destroyed. Summarising costs one extra API call at
+// the moment the conversation gets long, and in exchange the device keeps the
+// substance of everything that came before in a few hundred characters.
+//
+// Returns false if it could not summarise, in which case the caller falls back
+// to dropping messages, because a conversation that cannot be sent at all is
+// worse than one that lost its oldest turns.
+static bool compact_context(void)
+{
+    int n = cJSON_GetArraySize(s_messages);
+    if (n < 6) {
+        return false;   // nothing worth summarising yet
+    }
+
+    // Summarise the older half. Index 0 is the system prompt and stays.
+    int cut = 1 + (n - 1) / 2;
+    // Never cut so that a tool result becomes the first message: it would have
+    // no matching tool call in front of it, and the API rejects that outright.
+    while (cut < n) {
+        cJSON *m = cJSON_GetArrayItem(s_messages, cut);
+        cJSON *role = m ? cJSON_GetObjectItem(m, "role") : NULL;
+        if (cJSON_IsString(role) && strcmp(role->valuestring, "tool") == 0) {
+            cut++;
+        } else {
+            break;
+        }
+    }
+    if (cut <= 1 || cut >= n) {
+        return false;
+    }
+
+    cJSON *req  = cJSON_CreateObject();
+    cJSON *msgs = cJSON_CreateArray();
+    for (int i = 1; i < cut; i++) {
+        cJSON_AddItemToArray(msgs, cJSON_Duplicate(cJSON_GetArrayItem(s_messages, i), true));
+    }
+    cJSON *ask = cJSON_CreateObject();
+    cJSON_AddStringToObject(ask, "role", "user");
+    cJSON_AddStringToObject(ask, "content",
+        "Summarise the conversation above in under 200 words. Keep what still "
+        "matters for continuing: what was asked, what was done, file paths "
+        "written, device state changed, and anything that failed and why. Write "
+        "it as notes, not prose. Do not call any tools.");
+    cJSON_AddItemToArray(msgs, ask);
+
+    cJSON_AddStringToObject(req, "model", cfg_get(CFG_API_MODEL, "deepseek-v4-flash"));
+    cJSON_AddItemToObject(req, "messages", msgs);
+    cJSON_AddNumberToObject(req, "max_tokens", 400);
+
+    char *body = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+    if (!body) {
+        return false;
+    }
+
+    int status = 0;
+    char *err = NULL;
+    ESP_LOGI(TAG, "compacting %d messages", cut - 1);
+    cJSON *reply = post_completion(body, &status, &err);
+    free(body);
+    free(err);
+    if (!reply) {
+        return false;
+    }
+
+    cJSON *choice  = cJSON_GetArrayItem(cJSON_GetObjectItem(reply, "choices"), 0);
+    cJSON *message = choice ? cJSON_GetObjectItem(choice, "message") : NULL;
+    cJSON *content = message ? cJSON_GetObjectItem(message, "content") : NULL;
+    if (!cJSON_IsString(content) || !content->valuestring[0]) {
+        cJSON_Delete(reply);
+        return false;
+    }
+
+    char *summary = malloc(strlen(content->valuestring) + 64);
+    if (!summary) {
+        cJSON_Delete(reply);
+        return false;
+    }
+    sprintf(summary, "Earlier in this session:\n%s", content->valuestring);
+    cJSON_Delete(reply);
+
+    // Swap the summarised span for a single note, oldest first so the indices
+    // stay put while deleting.
+    for (int i = 1; i < cut; i++) {
+        cJSON_DeleteItemFromArray(s_messages, 1);
+    }
+    cJSON *note = cJSON_CreateObject();
+    cJSON_AddStringToObject(note, "role", "user");
+    cJSON_AddStringToObject(note, "content", summary);
+    cJSON_InsertItemInArray(s_messages, 1, note);
+    free(summary);
+
+    ESP_LOGI(TAG, "compacted to %d chars", context_chars());
+    return true;
+}
+
 static void trim_context(void)
 {
-    while (context_chars() > MAX_CONTEXT && cJSON_GetArraySize(s_messages) > 3) {
+    if (context_chars() > max_context()) {
+        compact_context();
+    }
+
+    // Fallback: if summarising failed or did not free enough, drop the oldest
+    // messages as before. Losing history beats a request the API will refuse.
+    while (context_chars() > max_context() && cJSON_GetArraySize(s_messages) > 3) {
 
         cJSON_DeleteItemFromArray(s_messages, 1);
         for (;;) {
@@ -379,7 +503,8 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
     esp_err_t result = ESP_OK;
     cJSON *tools = build_tools();
 
-    for (int hop = 0; hop < MAX_HOPS; hop++) {
+    int hops = max_hops();
+    for (int hop = 0; hop < hops; hop++) {
         if (s_stop) {
             emit(fn, ctx, AGENT_ERROR, "stopped");
             result = ESP_ERR_INVALID_STATE;
@@ -483,8 +608,10 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
 
         cJSON_Delete(reply);
 
-        if (hop == MAX_HOPS - 1) {
-            emit(fn, ctx, AGENT_ERROR, "stopped: too many tool calls in one turn");
+        if (hop == hops - 1) {
+            emit(fn, ctx, AGENT_ERROR, "stopped: hit the per-turn tool call limit. Use `seq` to do a "
+                                 "repetitive job in one call, or raise it with "
+                                 "`cfg set agent.hops <n>`");
             result = ESP_ERR_TIMEOUT;
         }
     }
@@ -557,7 +684,7 @@ static int cmd_agent(int argc, char **argv, sesame_out_t *out)
     sesame_printf(out, "context  %d chars\n", context_chars());
     sesame_printf(out, "prompt   %d chars, %d commands exposed\n",
                   agent_prompt_bytes(), sesame_cmd_count());
-    sesame_printf(out, "hops     up to %d tool calls per turn\n", MAX_HOPS);
+    sesame_printf(out, "hops     up to %d tool calls per turn (cfg set agent.hops N)\n", max_hops());
     return 0;
 }
 
