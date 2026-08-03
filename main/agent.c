@@ -75,6 +75,27 @@ static volatile bool     s_stop;
 // changes the prefix and throws the cache away.
 static uint32_t s_cache_hit, s_cache_miss;
 
+// Compaction happens deep inside the hop loop, well below the caller that owns
+// the output sink. Without this it runs silently, and since it can take minutes
+// on a large conversation the only visible symptom is the device appearing to
+// hang. Progress is not a nicety here, it is the difference between "working"
+// and "broken" from the outside.
+static agent_emit_fn s_emit_fn;
+static void         *s_emit_ctx;
+
+static void emit_status(const char *fmt, ...)
+{
+    if (!s_emit_fn) {
+        return;
+    }
+    char msg[160];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+    s_emit_fn(s_emit_ctx, AGENT_STATUS, msg);
+}
+
 bool agent_busy(void)  { return s_busy; }
 int  agent_turns(void) { return s_turns; }
 
@@ -480,6 +501,8 @@ static bool compact_context(void)
     int status = 0;
     char *err = NULL;
     ESP_LOGI(TAG, "compacting %d messages", cut - 1);
+    emit_status("compacting %d earlier messages (%d KB) to keep the conversation "
+           "in memory, this can take a while", cut - 1, context_chars() / 1024);
     cJSON *reply = post_stream(msgs, NULL, 400, &status, &err);
     cJSON_Delete(msgs);
     free(err);
@@ -515,6 +538,7 @@ static bool compact_context(void)
     free(summary);
 
     ESP_LOGI(TAG, "compacted to %d chars", context_chars());
+    emit_status("compacted to %d KB", context_chars() / 1024);
     return true;
 }
 
@@ -607,6 +631,8 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
     }
     s_busy = true;
     s_stop = false;
+    s_emit_fn = fn;
+    s_emit_ctx = ctx;
     led_set(LED_THINKING);
 
     ensure_conversation();
@@ -630,7 +656,12 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
 
         int status = 0;
         char *err_text = NULL;
-        ESP_LOGI(TAG, "hop %d, ~%d chars of context", hop + 1, context_chars());
+        int ctx_now = context_chars();
+        ESP_LOGI(TAG, "hop %d, ~%d chars of context", hop + 1, ctx_now);
+        if (ctx_now > 200000) {
+            emit_status("sending %d KB of conversation, about %ds just to upload",
+                   ctx_now / 1024, ctx_now / 95000);
+        }
         cJSON *reply = post_stream(s_messages, tools, 2048, &status, &err_text);
 
         if (!reply) {
@@ -725,6 +756,8 @@ esp_err_t agent_run(const char *user_msg, agent_emit_fn fn, void *ctx)
     }
 
     cJSON_Delete(tools);
+    s_emit_fn = NULL;
+    s_emit_ctx = NULL;
     s_busy = false;
 
     if (result == ESP_OK) {
@@ -739,6 +772,9 @@ static void console_emit(void *ctx, agent_ev_t ev, const char *text)
     sesame_out_t *out = ctx;
 
     switch (ev) {
+    case AGENT_STATUS:
+        sesame_printf(out, "  ... %s\n", text);
+        break;
     case AGENT_TEXT:
         sesame_printf(out, "%s\n", text);
         break;

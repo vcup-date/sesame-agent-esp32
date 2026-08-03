@@ -4,6 +4,7 @@
 #include "esp_err.h"
 
 typedef enum {
+    AGENT_STATUS,   // progress the user should see, not model output
     AGENT_TEXT,
     AGENT_TOOL_CALL,
     AGENT_TOOL_RESULT,

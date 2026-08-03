@@ -104,7 +104,8 @@ static void stream_emit(void *ctx, agent_ev_t ev, const char *text)
         return;
     }
 
-    const char *kind = ev == AGENT_TEXT        ? "text"
+    const char *kind = ev == AGENT_STATUS      ? "status"
+                     : ev == AGENT_TEXT        ? "text"
                      : ev == AGENT_TOOL_CALL   ? "call"
                      : ev == AGENT_TOOL_RESULT ? "result"
                      : ev == AGENT_ERROR       ? "error"
