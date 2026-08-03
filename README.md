@@ -32,6 +32,12 @@ esptool.py --chip esp32s3 --baud 460800 write_flash 0x0 firmware/sesame-agent-es
 
 That is the whole install. The same file is attached to the [latest release](../../releases/latest) if you would rather not clone.
 
+This image starts at offset 0 and covers the NVS partition, so flashing it clears any saved Wi-Fi credentials, API key and settings, and the device comes up in setup mode again. That is what you want on a new board. If you are reflashing one that is already configured and would rather keep its settings, write only the application instead:
+
+```
+esptool.py --chip esp32s3 --baud 460800 write_flash 0x10000 build/sesame-agent-esp32.bin
+```
+
 If the board is not detected, check that your cable carries data rather than power only. This is the single most common cause. On macOS the port is usually `/dev/cu.usbserial-*`, on Linux `/dev/ttyUSB0`, on Windows a COM port. Pass it with `-p` if esptool guesses wrong.
 
 ## Getting it on your network

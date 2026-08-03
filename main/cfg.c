@@ -26,7 +26,7 @@ static struct {
     { CFG_SSH_PASS,  ""                         },
     { CFG_DEV_NAME,  "sesame-agent"             },
 
-    { CFG_LED_PIN,   "-1"                       },
+    { CFG_LED_PIN,   "48"                       },
     { CFG_LED_INV,   "0"                        },
     { "cam.pins",    ""                         },
 };
