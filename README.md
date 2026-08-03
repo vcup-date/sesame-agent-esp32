@@ -1,3 +1,5 @@
+<p align="right"><b>English</b> | <a href="README.zh-CN.md">简体中文</a></p>
+
 # sesame agent esp32
 
 An AI agent that lives on an ESP32-S3 and controls the hardware it is running on.
@@ -303,7 +305,13 @@ The board has three LEDs. Red is wired straight across the 3.3 V rail with no GP
 
 ## Building from source
 
-Requires ESP-IDF v5.5.
+Requires ESP-IDF v5.5. Source its environment first, otherwise `idf.py` is not on your PATH and every command below fails with "command not found":
+
+```
+. $HOME/esp/esp-idf/export.sh        # Windows: %USERPROFILE%\esp\esp-idf\export.bat
+```
+
+Then:
 
 ```
 git clone https://github.com/vcup-date/sesame-agent-esp32.git
@@ -312,6 +320,8 @@ idf.py set-target esp32s3
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
+
+`idf.py` is an executable, so it is run directly. There is no `python idf.py`.
 
 The MicroPython embed package under `components/micropython/micropython_embed` is generated output and is committed so that a fresh clone builds without extra steps. To regenerate it after changing `mpconfigport.h`, run `components/micropython/regen.sh` with a MicroPython checkout available.
 
