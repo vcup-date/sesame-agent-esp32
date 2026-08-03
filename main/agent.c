@@ -159,8 +159,9 @@ static char *build_system_prompt(void)
     // model's own business and it does them better unprompted.
     pappend(&b,
         "\nHow the tool behaves:\n\n"
-        "- No shell syntax: no pipes, redirection, globbing or &&. One command "
-        "per call, spelled as above.\n"
+        "- `|`, `>`, `>>` and `&&` work. A pipe hands the left side's output to "
+        "the right side as a file path, so it suits `grep`, `head`, `tail`, "
+        "`wc` and `text`. No globbing, variables or subshells.\n"
         "- Each call is a network round trip. `seq` runs a whole list in one "
         "call: `seq rgb 255 0 0; wait 150; rgb 0 255 0; wait 150`, and "
         "`seq xN <list>` repeats it. Timing inside `seq` is the device's.\n"

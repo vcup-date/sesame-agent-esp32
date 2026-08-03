@@ -168,6 +168,26 @@ a colour sweep sent one command at a time is slow and can exhaust the per turn
 budget. `seq x3 rgb 255 0 0; wait 150; rgb 0 0 255; wait 150` is one call and
 the timing is the device's.
 
+### Shell operators
+
+```
+sysinfo > /sesame/info.txt        write output to a file
+uptime >> /sesame/info.txt        append instead
+ls | grep py                      pipe into a filter
+ls | grep sesame | wc             chains work
+snap && ls /sesame/photos         run the second only if the first succeeded
+```
+
+There is no stdin on this device: a command takes argv, not a stream. A pipe is
+therefore emulated by capturing the left side to a temporary file and passing
+that path to the right side as one more argument. That is exactly what the
+filters expect, since `grep`, `head`, `tail`, `wc` and `text` all take a path
+last, so `ls | grep py` becomes `grep py <tmp>`. A command with no file argument
+will not do anything useful on the right of a pipe.
+
+`write` and `python` are exempt, because they take the rest of the line
+verbatim. A `>` inside a file body or a `|` inside Python source stays literal.
+
 ### Hardware
 
 Pin numbers are GPIO numbers. `pins` prints which are free.
@@ -329,7 +349,7 @@ The MicroPython embed package under `components/micropython/micropython_embed` i
 
 ## Limits
 
-The shell is not bash. There are no pipes, no redirection, no globbing and no `&&`. `grep <pattern> <file>` rather than `cat file | grep pattern`. `seq` covers the common case of several steps with timing in one call, but it is a list, not a language: no variables, no conditions, no loops beyond `xN`.
+The shell is not bash. It has `|`, `>`, `>>` and `&&`, but no globbing, no variables, no substitution and no subshells. Pipes work by handing a temporary file to the next command rather than by streaming, so they only help commands that take a file path. `seq` covers several steps with timing in one call, but it is a list, not a language.
 
 MicroPython here is pure computation. `python` opens a real interactive session with `>>>` and `...` prompts, expression echo and persistent state, but there is no `machine` module, no file access and no pin access from it. Anything touching hardware has to be a C command, which is why the command list is as long as it is.
 

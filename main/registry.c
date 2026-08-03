@@ -182,7 +182,7 @@ static int tokenize(char *line, char **argv, int max)
     return argc;
 }
 
-int sesame_exec(const char *line, sesame_out_t *out)
+static int exec_one(const char *line, sesame_out_t *out)
 {
     while (*line == ' ' || *line == '\t') {
         line++;
@@ -244,6 +244,176 @@ int sesame_exec(const char *line, sesame_out_t *out)
 
     int rc = cmd->fn(argc, argv, out);
     free(copy);
+    return rc;
+}
+
+
+// ── shell operators: |  >  >>  && ────────────────────────────────────────
+//
+// Not a real shell, and it does not pretend to be one, but three operators
+// carry most of the weight and all three are honest to implement here.
+//
+// There is no stdin on this device: a command takes argv, not a stream. So a
+// pipe is emulated by capturing the left side to a temporary file and handing
+// that path to the right side as one more argument. That is exactly what the
+// filters want, since `grep`, `head`, `tail`, `wc` and `text` all take a path
+// as their last argument, so `ls | grep py` becomes `grep py <tmp>` and works.
+// It will not help a command that has no file argument, and it says so rather
+// than failing strangely.
+//
+// Raw commands are deliberately exempt. `write` and `py` take the rest of the
+// line verbatim, so a `>` inside a file body or a `|` inside Python source must
+// stay literal. Parsing operators there would corrupt exactly the payloads that
+// are hardest to notice being corrupted.
+
+#define PIPE_A SESAME_MOUNT "/.pipe.a"
+#define PIPE_B SESAME_MOUNT "/.pipe.b"
+
+// Find an operator at the top level: outside quotes, and not part of a longer
+// token like ">>" when looking for ">".
+static char *find_op(char *s, const char *op)
+{
+    size_t n = strlen(op);
+    char quote = 0;
+    for (char *p = s; *p; p++) {
+        if (quote) {
+            if (*p == quote) quote = 0;
+            continue;
+        }
+        if (*p == '"' || *p == '\'') { quote = *p; continue; }
+        if (strncmp(p, op, n) == 0) {
+            // ">" must not match the first char of ">>"
+            if (n == 1 && op[0] == '>' && p[1] == '>') continue;
+            return p;
+        }
+    }
+    return NULL;
+}
+
+static bool is_raw_command(const char *line)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    char name[24];
+    size_t n = 0;
+    while (line[n] && !is_sep(line[n]) && n < sizeof(name) - 1) {
+        name[n] = line[n];
+        n++;
+    }
+    name[n] = '\0';
+    const sesame_cmd_t *c = sesame_lookup(name);
+    return c && c->raw;
+}
+
+static void write_all(const char *path, const char *text, bool append)
+{
+    FILE *f = fopen(path, append ? "ab" : "wb");
+    if (!f) return;
+    if (text) fwrite(text, 1, strlen(text), f);
+    fclose(f);
+}
+
+// One pipeline: a | b | c, with an optional > or >> on the end.
+static int exec_pipeline(char *seg, sesame_out_t *out)
+{
+    char *redir = find_op(seg, ">>");
+    bool append = redir != NULL;
+    if (!redir) redir = find_op(seg, ">");
+
+    char *target = NULL;
+    if (redir) {
+        *redir = '\0';
+        target = redir + (append ? 2 : 1);
+        while (*target == ' ' || *target == '\t') target++;
+        if (!*target) {
+            sesame_write(out, "expected a file after > \n");
+            return -1;
+        }
+    }
+
+    // split the stages
+    char *stage[6];
+    int nstage = 0;
+    stage[nstage++] = seg;
+    char *bar;
+    while (nstage < 6 && (bar = find_op(stage[nstage - 1], "|")) != NULL) {
+        *bar = '\0';
+        stage[nstage++] = bar + 1;
+    }
+
+    int rc = 0;
+    const char *carry = NULL;   // temp file holding the previous stage's output
+    int slot = 0;               // alternates so a stage never reads the file it writes
+
+    for (int i = 0; i < nstage; i++) {
+        char *cmd = stage[i];
+        while (*cmd == ' ' || *cmd == '\t') cmd++;
+        if (!*cmd) {
+            sesame_write(out, "empty pipeline stage\n");
+            return -1;
+        }
+
+        char joined[512];
+        if (carry) {
+            snprintf(joined, sizeof(joined), "%s %s", cmd, carry);
+            cmd = joined;
+        }
+
+        bool last = (i == nstage - 1);
+        if (last && !target) {
+            rc = exec_one(cmd, out);       // straight to the caller's sink
+        } else {
+            int r = 0;
+            char *captured = sesame_capture(cmd, &r);
+            rc = r;
+            const char *next = slot ? PIPE_B : PIPE_A;
+            slot = !slot;
+            if (last) {
+                write_all(target, captured, append);
+                sesame_printf(out, "%u bytes %s %s\n",
+                              (unsigned)(captured ? strlen(captured) : 0),
+                              append ? "appended to" : "written to", target);
+            } else {
+                write_all(next, captured, false);
+            }
+            free(captured);
+            carry = next;
+        }
+        if (rc != 0 && !last) {
+            break;   // a failed stage has nothing useful to hand on
+        }
+    }
+
+    remove(PIPE_A);
+    remove(PIPE_B);
+    return rc;
+}
+
+int sesame_exec(const char *line, sesame_out_t *out)
+{
+    while (*line == ' ' || *line == '\t') line++;
+    if (!*line || *line == '#') return 0;
+
+    // A raw command owns the whole line; operators inside it are its data.
+    if (is_raw_command(line)) {
+        return exec_one(line, out);
+    }
+
+    char *work = strdup(line);
+    if (!work) {
+        sesame_write(out, "out of memory\n");
+        return -1;
+    }
+
+    int rc = 0;
+    char *seg = work;
+    for (;;) {
+        char *amp = find_op(seg, "&&");
+        if (amp) *amp = '\0';
+        rc = exec_pipeline(seg, out);
+        if (!amp || rc != 0) break;   // && stops at the first failure
+        seg = amp + 2;
+    }
+    free(work);
     return rc;
 }
 
