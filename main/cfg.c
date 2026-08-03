@@ -22,8 +22,8 @@ static struct {
     { CFG_API_KEY,   ""                         },
     { CFG_API_URL,   "https://api.deepseek.com" },
     { CFG_API_MODEL, "deepseek-v4-flash"        },
-    { CFG_SSH_USER,  "sesame"                   },
-    { CFG_SSH_PASS,  ""                         },
+    { CFG_SSH_USER,  "admin"                    },
+    { CFG_SSH_PASS,  "admin"                    },
     { CFG_DEV_NAME,  "sesame-agent"             },
 
     { CFG_LED_PIN,   "48"                       },
@@ -33,7 +33,7 @@ static struct {
     { "net.gw",      ""                         },
     { "net.mask",    "255.255.255.0"            },
     { "agent.hops",  "64"                       },
-    { "agent.ctx",   "262144"                   },
+    { "agent.ctx",   "1048576"                  },
 };
 
 static const int CFG_N = sizeof(s_cfg) / sizeof(s_cfg[0]);

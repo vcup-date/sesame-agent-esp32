@@ -8,7 +8,7 @@ Ask it in plain language to take a photo, probe an I2C bus, move a servo, record
 
 ## How it works
 
-The device runs a small shell with 58 commands. Those same commands are reachable four ways: over USB serial, over SSH, over HTTP, and by the model as its single tool. Adding a command adds it everywhere at once, and the model's system prompt is generated from the live command table, so it always knows exactly what this build can do.
+The device runs a small shell. Its commands are reachable four ways: over USB serial, over SSH, over HTTP, and by the model as its single tool. Adding a command adds it everywhere at once, and the model's system prompt is generated from the live command table, so it always knows exactly what this build can do.
 
 The model is whatever you configure. It speaks the OpenAI chat completions format, so DeepSeek, OpenAI, OpenRouter, Groq, Together, or a local llama.cpp server all work. The API key is stored on the device and never leaves it except to reach your chosen endpoint.
 
@@ -57,6 +57,29 @@ After it joins, reach it at `http://sesame-xxxx.local`, where `xxxx` comes from 
 
 To change networks later, use the Settings panel in the web interface, or `wifi connect <ssid> <password>` from any console. To start over completely, `wifi forget` and reboot.
 
+## SSH
+
+The SSH server is on by default with **admin / admin**, so it works the moment the board is on your network.
+
+```
+ssh admin@sesame-xxxx.local
+passwd <a better password>
+```
+
+Change it. Anyone who can reach port 22 gets full control of the board, and the login warns you while the default is still in place.
+
+The `agent` command puts the session into conversation mode, where every line goes to the model and tool calls are shown as they run. `exit` returns to the shell.
+
+```
+sesame-ede4> agent
+conversation mode. ask in plain language; 'exit' returns to the shell.
+sesame-ede4 ask> what is on the i2c bus?
+  · i2c scan
+    0x3c
+There is one device at 0x3c, which is the address an SSD1306 OLED uses.
+sesame-ede4 ask> exit
+```
+
 ## The web interface
 
 Served from the board itself, roughly 60 KB, no external assets, no framework, no tracking. It works offline on your LAN.
@@ -91,48 +114,173 @@ When a task needs logic that no single command expresses, it writes MicroPython 
 
 ## Commands
 
-All 58 are available from the serial console, SSH, the web terminal, and to the agent.
+Reachable four ways: serial console, SSH, `POST /api/exec`, and the agent's `shell` tool.
 
-**System**  `help` `sysinfo` `free` `uptime` `reboot` `cfg`
-`sysinfo` reports why it last restarted, which distinguishes a crash from a brownout from a deliberate reboot.
+### Files and text
 
-**Files**  `ls` `cat` `write` `rm` `mkdir` `df` `cp` `mv` `head` `tail` `grep` `wc` `touch` `rmdir` `tree` `text`
-`text` converts saved HTML into readable plain text, which is what makes fetching a web page useful rather than dumping tags into the model's context.
+| | |
+|---|---|
+| `ls [dir]` | list a directory |
+| `cat <file>` | print a file |
+| `write <file> <text>` | write text, newlines and indentation kept as sent |
+| `cp <src> <dst>` | copy, byte exact, binary safe |
+| `mv <src> <dst>` | rename or move |
+| `rm <file>` · `rmdir <dir>` · `mkdir <dir>` · `touch <file>` | the obvious ones |
+| `head <file> [n]` · `tail <file> [n]` | first or last lines, up to 2000 |
+| `grep <text> <file>` | matching lines with numbers, up to 400 |
+| `wc <file>` | lines, words, bytes |
+| `tree [dir]` | recursive listing with sizes, 12 deep |
+| `df` · `free` | space on flash, and heap in SRAM and PSRAM |
+| `text <file.html> [chars]` | strip HTML to readable text |
 
-**Network**  `wifi` `ping` `resolve` `netstat` `http` `time` `sniff` `peer`
-`http` does HTTPS with certificate verification and can stream a response straight to a file with `-o`, so a download is not limited by RAM.
+### Network
 
-**Hardware**  `gpio` `adc` `i2c` `i2creg` `pwm` `servo` `stepper` `dac` `tone` `ir` `spi` `i2s` `rgb` `led` `uart` `pins` `mon` `temp` `rand` `sleep`
-`pins` prints a live map of every GPIO, what is using it, and which are free.
-`mon` samples a value over time and draws a sparkline, which answers "is it drifting" rather than "what is it now".
+| | |
+|---|---|
+| `wifi [status\|scan\|connect <ssid> <pw>\|static <ip> <gw>\|dhcp\|forget]` | join, inspect, or fix an address |
+| `ping <host> [count]` | ICMP with per packet RTT and loss |
+| `resolve <host>` · `netstat` | DNS lookup; interfaces, DNS and open ports |
+| `http <url> [-o <file>]` | HTTPS with certificate verification, streams to a file |
+| `time [sync]` | clock, NTP |
+| `sniff [seconds] [channel]` | passive frame counts per transmitter, headers only |
+| `peer [list\|send <name\|all> <text>\|inbox]` | message other boards over ESP-NOW, 4 hop mesh |
 
-**Camera**  `snap` `camera`
+### Agent, shell and scheduling
 
-**Bluetooth**  `ble` (scan for nearby devices, or advertise this one)
+| | |
+|---|---|
+| `agent` | enter conversation mode, `exit` leaves |
+| `agent status\|reset` | model, context, cache hit rate; clear the conversation |
+| `ask <request>` | one request without entering the REPL |
+| `seq [xN] <cmd>; <cmd>; ...` | run a list in ONE call, `wait <ms>` between steps |
+| `cron add [-g] [-k] <secs\|once> <cmd>` | schedule; `-g` survives reboot, `-k` never expires |
+| `cron list\|del <id\|all>\|pause\|resume` | manage jobs |
+| `skill list\|show <name>\|rm <name>` | saved procedures, read on demand |
+| `py <code>` · `py -f <file>` | MicroPython, computation only |
+| `cfg [list\|get\|set]` · `passwd <pw> [user]` | settings; change the SSH password |
+| `ssh` · `sysinfo` · `uptime` · `reboot` · `help [cmd]` | |
 
-**Display**  `disp` (SSD1306 OLED over the camera's I2C bus)
+`seq` matters more than it looks. Every tool call is a network round trip, so
+a colour sweep sent one command at a time is slow and can exhaust the per turn
+budget. `seq x3 rgb 255 0 0; wait 150; rgb 0 0 255; wait 150` is one call and
+the timing is the device's.
 
-**Agent**  `ask` `agent`
+### Hardware
 
-**Python**  `py` (MicroPython, for loops and arithmetic the shell cannot express)
+Pin numbers are GPIO numbers. `pins` prints which are free.
 
-**Remote**  `ssh` (a real SSH server with a persistent host key)
+**`gpio get <pin> [up|down]` · `gpio set <pin> <0|1>`**
+Read a pin, optionally with an internal pull, or drive it. The pull is what
+distinguishes a floating pin from one something is actually holding: with the
+pull up on, a disconnected pin reads 1 and a pin held down still reads 0.
+```
+gpio get 4 up        →  1  (pull-up)
+gpio set 2 1
+```
 
-## Hardware notes
+**`adc <channel 0-9>`** ADC1, roughly 0 to 3100 mV, 12 bit.
+```
+adc 3                →  channel 3: raw 2048 (~1550 mV)
+```
 
-**A real analog output without a DAC.** The ESP32-S3 has no DAC peripheral. The `dac` command uses the sigma-delta modulator instead, which produces a pulse density that becomes a genuine analog voltage or a sine wave once you put a resistor and capacitor on the pin. It can play a short tune with `dac play 2 523:150,659:150,784:300`.
+**`pwm <pin> <duty 0-255> [freq]`** LEDC, default 5 kHz. For brightness and
+speed, not for servos: at 50 Hz an 8 bit duty gives about a dozen usable steps.
+```
+pwm 2 128 1000
+```
 
-**Servos done properly.** `pwm` runs LEDC at 8 bit, which at the 50 Hz a servo needs gives about a dozen distinct positions across 180 degrees. `servo` uses MCPWM with a 1 MHz tick, so the pulse width is set directly in microseconds, the unit servos are specified in.
+**`servo <pin> <angle 0-180> [min_us] [max_us]` · `servo <pin> us <n>` · `servo release <pin>`**
+MCPWM at a 1 MHz tick, so the pulse is set in microseconds, the unit servos are
+specified in. Defaults 500 to 2500 us. `release` stops the pulse train so the
+servo stops holding torque. Power a servo from its own supply, not the 3V3 pin.
+```
+servo 2 90           →  servo 2: 1500 us (90 deg)
+servo 2 us 1750
+```
 
-**Steppers, both common kinds.** `stepper step` drives an A4988 or DRV8825 style step and direction driver. `stepper 4wire` drives a 28BYJ-48 through a ULN2003.
+**`stepper step <step_pin> <dir_pin> <steps> [rpm]`**
+**`stepper 4wire <p1> <p2> <p3> <p4> <steps> [rpm]`**
+`step` drives an A4988 or DRV8825 style driver; `4wire` drives a 28BYJ-48
+through a ULN2003. Negative steps reverse. Coils are de-energised at the end so
+the motor does not cook. Blocks while running, capped at 25 s.
+```
+stepper 4wire 1 2 14 21 2048 15      →  2048 steps forward at 15 rpm
+stepper step 4 5 -400 120
+```
 
-**Infrared, no protocol assumed.** `ir rx` records the raw mark and space timings from any remote, `ir tx` replays them through a 38 kHz carrier. The output of one pastes directly into the other, so it works with remotes whose protocol nobody has documented.
+**`dac <pin> <level 0-255>` · `dac tone <pin> <hz> [ms]` · `dac play <pin> <hz:ms,...>` · `dac off`**
+The S3 has no DAC. This is the sigma delta modulator, which emits a pulse
+density that becomes a real voltage or sine wave once you put an RC low pass
+filter on the pin (1k and 100nF works). Without the filter the pin is still
+just a fast digital toggle.
+```
+dac 2 128                              →  half of VDD
+dac tone 2 440 500                     →  a real 440 Hz sine
+dac play 2 523:150,659:150,784:300     →  C E G
+```
 
-**Audio in and out.** `i2s play` and `i2s tone` drive a MAX98357A style amplifier. `i2s rec` and `i2s pdmrec` record 16 bit mono WAV from an INMP441, SPH0645, or a PDM microphone. Recording reports the peak level, so a silent file reads as a wiring problem instead of looking like success.
+**`tone <pin> <hz> [ms]`** Square wave for a passive buzzer. Cruder than `dac`
+and needs no filter.
 
-**Board to board messaging.** `peer` uses ESP-NOW, which needs no router. Each device announces its name every few seconds, and messages are addressed by name. Messages relay up to 4 hops with a seen-message cache and randomised delay before forwarding, so two agents that cannot hear each other directly can still talk through a third. The relay design follows [bitchat](https://github.com/permissionlesstech/bitchat), which is public domain.
+**`ir rx <pin> [ms]` · `ir tx <pin> <+mark,-space,...>`**
+Records raw mark and space timings in microseconds and replays them through a
+38 kHz carrier. No protocol is decoded, so it works with remotes nobody has
+documented. `rx` output pastes straight into `tx`. Needs a demodulating
+receiver such as a TSOP38238 to record, and an IR LED to send.
+```
+ir rx 14 8000        →  +9000,-4500,+560,-560,...
+ir tx 2 +9000,-4500,+560,-560
+```
 
-**Passive radio survey.** `sniff` counts frames by type and by transmitter on a channel, which tells you whether the air is congested. It reads frame headers only. It does not capture payloads, and there is deliberately no frame injection counterpart.
+**`i2c scan [sda] [scl]`** i2cdetect style grid. Defaults to the camera's bus
+(sda 4, scl 5), which it shares rather than fighting.
+
+**`i2creg read <addr> <reg> [n]` · `i2creg write <addr> <reg> <hex...>`**
+Register access without a driver. Addresses and registers in hex.
+```
+i2creg read 3c 00 2
+i2creg write 3c 00 af
+```
+
+**`spi <sclk> <mosi> <miso|-1> <cs> <hex...>`** One full duplex transfer on
+SPI2 at 1 MHz. SPI1 is the flash and PSRAM and is not touchable.
+
+**`i2s tone|play <bclk> <lrclk> <dout> ...`** Audio out to a MAX98357A style
+amplifier.
+**`i2s rec <bclk> <ws> <din> <file.wav> [secs] [rate]`**
+**`i2s pdmrec <clk> <din> <file.wav> [secs] [rate]`**
+Records 16 bit mono WAV from an INMP441 or SPH0645, or a PDM microphone. The
+peak level is reported, so a silent file reads as a wiring fault rather than as
+success.
+
+**`rgb <r> <g> <b> [pin]` · `rgb off`** The WS2812 on GPIO48, driven over RMT.
+A plain `gpio set` cannot light it: it needs timed bit encoding.
+
+**`led [status|idle|think|ok|error|off]`** The status animation on the same
+LED. Blue breathing when idle, amber pulse while thinking, green on success,
+red on error.
+
+**`ble [status|scan [secs]|adv on|off]`** Scan for nearby devices, or advertise
+this one. Broadcaster only, so nothing can connect to it. The stack costs about
+58 KB of internal RAM and is released again after a scan.
+
+**`snap` · `camera [status|pins]`** Take a photo to `/sesame/photos`, or
+inspect the sensor and its pinout.
+
+**`disp <text>`** SSD1306 OLED over the camera's I2C bus.
+
+**`uart <tx> <rx> <baud> [text]`** Talk to a GPS, modem or another board on
+UART1. UART0 is the console and is deliberately out of reach.
+
+**`mon <heap|adc <ch>|gpio <pin>> [samples] [ms]`** Sample a value over time
+and draw a sparkline, which answers "is it drifting" rather than "what is it
+now".
+
+**`pins [free]`** Live map of every GPIO and what is using it.
+
+**`temp` · `rand [n]` · `sleep <secs>`** Die temperature, hardware random
+numbers, deep sleep with a timer or GPIO wake.
+
 
 ## Pins on this board
 
@@ -170,13 +318,17 @@ The MicroPython embed package under `components/micropython/micropython_embed` i
 
 ## Limits
 
-The shell is not bash. There are no pipes, no redirection, no globbing, and no `&&`. One command per call. `grep <pattern> <file>` rather than `cat file | grep pattern`.
+The shell is not bash. There are no pipes, no redirection, no globbing and no `&&`. `grep <pattern> <file>` rather than `cat file | grep pattern`. `seq` covers the common case of several steps with timing in one call, but it is a list, not a language: no variables, no conditions, no loops beyond `xN`.
 
 MicroPython here is pure computation. There is no `machine` module, no file access, and no pin access from Python. Anything touching hardware has to be a C command, which is why the command list is as long as it is.
 
 `peer` messages are not encrypted and not signed. Anything in radio range can read them, and a name inside a packet is a claim rather than proof.
 
-The camera, Wi-Fi, SSH, web interface, ESP-NOW, BLE, sigma-delta output, and infrared transmit have all been verified on real hardware. The servo, stepper, I2S audio, SPI and OLED paths compile and validate their arguments but have not been tested against the physical devices, because none were connected during development. Treat first contact with those as debugging rather than as a regression.
+There is no authentication on the web interface, and SSH ships with a default password. Both give complete control of the board, including running arbitrary commands. This is built for a network you trust. Change the SSH password with `passwd`, and do not expose either to the internet without putting real authentication in front of them first.
+
+The camera, Wi-Fi, SSH, web interface, ESP-NOW, BLE, sigma-delta output and infrared transmit have all been verified on real hardware. The servo, stepper, I2S audio, SPI and OLED paths compile and validate their arguments, and the commands respond correctly, but they have not been tested against the physical devices because none were connected during development. Treat first contact with those as debugging rather than as a regression.
+
+The conversation is held in PSRAM, which measured at almost exactly one byte per character of encoded JSON, putting the ceiling near 1.5M tokens. `agent.ctx` defaults to 1M characters, roughly 256k tokens, and accepts up to 4.5M. The limit worth caring about is not memory but upload: the request is re-sent on every hop and TLS on this chip tops out around 90 KB/s, so a very large conversation costs real seconds per step.
 
 ## Tested on
 

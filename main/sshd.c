@@ -1,5 +1,6 @@
 #include "cfg.h"
 #include "net.h"
+#include "agent.h"
 #include "sesame.h"
 
 #include <string.h>
@@ -143,6 +144,32 @@ static void ssh_say(ssh_out_t *s, const char *text)
     sesame_write(&o, text);
 }
 
+static void ssh_write_crlf(sesame_out_t *o, const char *data, size_t len)
+{
+    // Expand into a buffer and send in chunks. Sending a byte at a time meant
+    // one SSH packet per character, which for the banner alone was hundreds of
+    // round trips and dropped the session before it finished drawing.
+    ssh_out_t *out = o->ctx;
+    char buf[256];
+    size_t n = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (n + 2 >= sizeof(buf)) {
+            buf[n] = '\0';
+            ssh_say(out, buf);
+            n = 0;
+        }
+        if (data[i] == '\n') {
+            buf[n++] = '\r';
+        }
+        buf[n++] = data[i];
+    }
+    if (n) {
+        buf[n] = '\0';
+        ssh_say(out, buf);
+    }
+}
+
+
 static void session(int sock)
 {
     WOLFSSH *ssh = wolfSSH_new(s_ctx);
@@ -166,8 +193,21 @@ static void session(int sock)
     char prompt[48];
     snprintf(prompt, sizeof(prompt), "%s> ", cfg_get(CFG_DEV_NAME, "sesame"));
 
-    ssh_say(&out, "\r\nsesame-agent-esp32 — type 'help', 'exit' to leave\r\n\r\n");
+    // The banner writes plain newlines; a raw SSH terminal needs carriage
+    // returns too, so it goes through a small translating sink.
+    sesame_out_t crlf = { .write = ssh_write_crlf, .ctx = &out };
+    sesame_banner(&crlf, NULL);
+    ssh_say(&out, "  type 'help' for commands, 'agent' to talk to it, "
+                  "'exit' to leave\r\n\r\n");
     ssh_say(&out, prompt);
+
+    // Conversation mode. In it, every line goes to the model instead of the
+    // command table, which is what makes SSH a usable way to actually work
+    // with the agent rather than only to poke at the device.
+    bool repl = false;
+    char agent_prompt[64];
+    snprintf(agent_prompt, sizeof(agent_prompt), "%s ask> ",
+             cfg_get(CFG_DEV_NAME, "sesame"));
 
     char line[SSH_LINE_MAX];
     int len = 0;
@@ -184,14 +224,31 @@ static void session(int sock)
             line[len] = '\0';
 
             if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
+                if (repl) {
+                    repl = false;
+                    ssh_say(&out, "left conversation mode\r\n");
+                    len = 0;
+                    ssh_say(&out, prompt);
+                    continue;
+                }
                 ssh_say(&out, "bye\r\n");
                 break;
             }
             if (len > 0) {
-                sesame_exec(line, &sink);
+                if (repl) {
+                    agent_ask(line, &crlf);
+                } else {
+                    agent_take_repl_request();   // drop anything another transport left
+                    sesame_exec(line, &sink);
+                    if (agent_take_repl_request()) {
+                        repl = true;
+                        ssh_say(&out, "conversation mode. ask in plain language; "
+                                      "'exit' returns to the shell.\r\n");
+                    }
+                }
             }
             len = 0;
-            ssh_say(&out, prompt);
+            ssh_say(&out, repl ? agent_prompt : prompt);
             continue;
         }
 
@@ -364,8 +421,40 @@ static int cmd_ssh(int argc, char **argv, sesame_out_t *out)
     return 0;
 }
 
+// The device ships with admin/admin so that SSH works out of the box, which
+// means the first useful thing anyone can do is change it. Naming it `passwd`
+// rather than burying it under `ssh password` is the whole point: it is the
+// name people already reach for.
+static int cmd_passwd(int argc, char **argv, sesame_out_t *out)
+{
+    if (argc < 2) {
+        sesame_printf(out,
+            "usage: passwd <new password> [user]\n"
+            "current user: %s%s\n",
+            cfg_get(CFG_SSH_USER, "admin"),
+            strcmp(cfg_get(CFG_SSH_PASS, ""), "admin") == 0
+                ? "   (still the default password, worth changing)" : "");
+        return 1;
+    }
+    if (strlen(argv[1]) < 4) {
+        sesame_write(out, "passwd: pick at least 4 characters\n");
+        return 1;
+    }
+    if (cfg_set(CFG_SSH_PASS, argv[1]) != ESP_OK) {
+        sesame_write(out, "passwd: could not save\n");
+        return 1;
+    }
+    if (argc > 2) {
+        cfg_set(CFG_SSH_USER, argv[2]);
+    }
+    sesame_printf(out, "password changed for %s (takes effect on the next login)\n",
+                  cfg_get(CFG_SSH_USER, "admin"));
+    return 0;
+}
+
 static const sesame_cmd_t CMDS[] = {
     { "ssh", "ssh [user <name>|password <pw>]", "SSH server status and login", cmd_ssh },
+    { "passwd", "passwd <new password> [user]", "change the SSH login password", cmd_passwd },
 };
 
 void cmd_ssh_register(void)

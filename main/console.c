@@ -1,3 +1,4 @@
+#include "agent.h"
 #include "sesame.h"
 #include "cfg.h"
 
@@ -52,10 +53,18 @@ static void console_task(void *arg)
 
     const esp_app_desc_t *app = esp_app_get_description();
     sesame_banner(sesame_stdout(), app ? app->version : NULL);
-    printf("  type 'help' for commands, 'ask <request>' for the agent\n\n");
+    printf("  type 'help' for commands, 'agent' to talk to it\n\n");
+
+    // Conversation mode, the same one SSH offers. `agent` enters it, `exit`
+    // leaves it, and in between every line goes to the model rather than the
+    // command table.
+    bool repl = false;
+    char agent_prompt[64];
+    snprintf(agent_prompt, sizeof(agent_prompt), "%s ask> ",
+             cfg_get(CFG_DEV_NAME, "sesame"));
 
     while (1) {
-        char *line = linenoise(prompt);
+        char *line = linenoise(repl ? agent_prompt : prompt);
         if (line == NULL) {
 
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -63,7 +72,22 @@ static void console_task(void *arg)
         }
         if (line[0] != '\0') {
             linenoiseHistoryAdd(line);
-            sesame_exec(line, sesame_stdout());
+            if (repl) {
+                if (strcmp(line, "exit") == 0 || strcmp(line, "quit") == 0) {
+                    repl = false;
+                    printf("left conversation mode\n");
+                } else {
+                    agent_ask(line, sesame_stdout());
+                }
+            } else {
+                agent_take_repl_request();   // drop anything another transport left
+                sesame_exec(line, sesame_stdout());
+                if (agent_take_repl_request()) {
+                    repl = true;
+                    printf("conversation mode. ask in plain language; "
+                           "'exit' returns to the shell.\n");
+                }
+            }
         }
         linenoiseFree(line);
     }

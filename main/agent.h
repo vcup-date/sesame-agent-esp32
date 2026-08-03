@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sesame.h"
+
 #include <stdbool.h>
 #include "esp_err.h"
 
@@ -26,5 +28,14 @@ int agent_context_chars(void);
 int agent_prompt_bytes(void);
 
 bool agent_busy(void);
+
+// Run one request and write the whole exchange, tool calls included, to a
+// sink. This is what the REPL in each shell calls.
+esp_err_t agent_ask(const char *text, struct sesame_out *out);
+
+// `agent` with no arguments asks its shell to switch into conversation mode.
+// The command itself cannot do that, because reading the next line belongs to
+// whichever shell is running: serial, SSH, or neither.
+bool agent_take_repl_request(void);
 
 void cmd_agent_register(void);

@@ -67,8 +67,13 @@ void sesame_banner(sesame_out_t *out, const char *version)
 {
     sesame_write(out,
         "\n"
-        "  ┌─┐┌─┐┌─┐┌─┐┌┬┐┌─┐\n"
-        "  └─┐├┤ └─┐├─┤│││├┤ \n"
-        "  └─┘└─┘└─┘┴ ┴┴ ┴└─┘\n");
-    sesame_printf(out, "  an agent on an esp32-s3 · %s\n\n", version ? version : "");
+        "   ███████ ███████ ███████  █████  ███    ███ ███████\n"
+        "   ██      ██      ██      ██   ██ ████  ████ ██     \n"
+        "   ███████ █████   ███████ ███████ ██ ████ ██ █████  \n"
+        "        ██ ██           ██ ██   ██ ██  ██  ██ ██     \n"
+        "   ███████ ███████ ███████ ██   ██ ██      ██ ███████\n"
+        "\n"
+        "        ( ) an agent that lives on the board\n");
+    sesame_printf(out, "            %s\n\n", version ? version : "");
 }
+

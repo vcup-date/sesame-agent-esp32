@@ -54,11 +54,11 @@ static int max_hops(void)
 //
 // The previous default was 48KB, which was a guess of mine and about twenty
 // times too small.
-#define DEFAULT_CONTEXT (256 * 1024)
+#define DEFAULT_CONTEXT (1024 * 1024)
 
 static int max_context(void)
 {
-    int c = atoi(cfg_get("agent.ctx", "262144"));
+    int c = atoi(cfg_get("agent.ctx", "1048576"));
     if (c < 4096)      c = 4096;
     if (c > 4500000) c = 4500000;
     return c;
@@ -74,6 +74,7 @@ static volatile bool     s_stop;
 // because it also means compaction is not free: rewriting the older half
 // changes the prefix and throws the cache away.
 static uint32_t s_cache_hit, s_cache_miss;
+static bool     s_repl_wanted;
 
 // Compaction happens deep inside the hop loop, well below the caller that owns
 // the output sink. Without this it runs silently, and since it can take minutes
@@ -802,6 +803,18 @@ static void console_emit(void *ctx, agent_ev_t ev, const char *text)
     }
 }
 
+esp_err_t agent_ask(const char *text, sesame_out_t *out)
+{
+    return agent_run(text, console_emit, out);
+}
+
+bool agent_take_repl_request(void)
+{
+    bool w = s_repl_wanted;
+    s_repl_wanted = false;
+    return w;
+}
+
 static int cmd_ask(int argc, char **argv, sesame_out_t *out)
 {
     if (argc < 2) {
@@ -815,6 +828,14 @@ static int cmd_ask(int argc, char **argv, sesame_out_t *out)
 
 static int cmd_agent(int argc, char **argv, sesame_out_t *out)
 {
+    // A shell that can read the next line will pick this up and switch into
+    // conversation mode. One that cannot, such as the HTTP exec endpoint, just
+    // gets the status below, and the flag is discarded before the next command
+    // on a real shell so it cannot leak across transports.
+    if (argc == 1) {
+        s_repl_wanted = true;
+    }
+
     if (argc > 1 && strcmp(argv[1], "reset") == 0) {
         agent_reset();
         sesame_write(out, "conversation cleared\n");
